@@ -26,6 +26,12 @@ export const EDITION_WHEN = {
  */
 export const PRIVATE_SITE = true;
 
+/**
+ * 登录后的默认落地页。这个站的主界面是工作台的“今日”；从某个后台页被送去登录的，仍回到那一页。
+ * 公开站点不设置时按引擎原来的规则（有后台就去 /admin，没有回首页）。
+ */
+export const SIGN_IN_HOME_PATH = "/today";
+
 export const SITE = {
   /** 站名：导航、页面标题、分享图、RSS、MCP、后台都用它。 */
   name: "长期调研工作台",

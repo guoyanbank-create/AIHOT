@@ -166,3 +166,18 @@ node scripts/verify-private.ts --base http://127.0.0.1:3000 --password '<ADMIN_P
 - 所有脚本 `bash -n` 通过；不删除任何数据卷；`backup.sh` 里 `data` 卷名先按 compose 项目标签找，找不到才从 compose config 读。
 
 **已知限制（汇总）**：真实 Tavily 联网联调未做（没有凭证，且按 Issue #1 要先确认调用预算）；外部通知（飞书等）未接；材料版本事件到任务的匹配策略仍待定；人工锁定目前是整条锁定（没有字段级锁定）；站名与行业文案待用户确认；公开 API/MCP 仍只给登录后的本人，没有给外部 Agent 的独立令牌。
+
+## 8. 本机部署联调（M4 Mac，2026-11-14）
+
+用户要求“部署该程序然后拉起来测试”。Docker 镜像构建没能完成：拉 `node:24-trixie-slim` 基础镜像被网络限速到约 2MB/分钟（前一次 docker 作业也停在基础镜像层）。于是按 `docs/deploy.md` 的“不用 Docker”路径，用本机 Node v24.22.1 + `postgres:17-alpine` 容器把同一份代码拉起来实测；功能（含私有边界、五个菜单、四步创建、台账、接口）与 Docker 部署一致，差别只在进程管理方式。
+
+实测记录：
+
+- `scripts/init-env.ts` 生成 `.env`（随机管理员密码/会话密钥/数据库密码）；`COLLECT_ENABLED=false`、`MODEL_CALLS_ENABLED=false` 保持关闭。
+- PostgreSQL 容器 `aihot-db`（127.0.0.1:5432，用户/库 `aihot`）；`scripts/migrate.ts` 应用 89 个迁移（含本阶段的 0912/0913），`scripts/seed.ts` 导入 18 个示范信源。
+- `npm run build -w @aihot/web` 后以 `NODE_ENV=production` 启动 api（127.0.0.1:3001）、worker、web（127.0.0.1:3000）。
+- `deploy/mac/verify-private.sh`：全部通过（匿名 17 项被挡，登录后页面/出口/MCP 可用）。
+- 浏览器端到端：登录后默认进入 `/today`；侧栏五个菜单（今日/任务/台账/信源/设置）；各页可打开；按四步创建任务成功并出现在今日；worker 的 `research.outbox` 定时任务已执行（job_runs 记录）。
+- 登录落地页改成工作台的“今日”（`site/site.ts` 的 `SIGN_IN_HOME_PATH`）：之前登录默认落到引擎后台 `/admin/sources`，在工作台里没有回主界面的入口，体验不对。前后截图见 `evidence/deploy-before-login.png`、`evidence/deploy-after-login.png`。
+- 关闭状态的说明：模型调用关闭时，点“立即运行”会把运行如实记成 failed（模型未配置/关闭），不伪装成没有变化；配好 `LLM_*`（可选 `TAVILY_API_KEY`）后可真实跑。
+- 停止：`kill $(lsof -nP -iTCP:3000 -sTCP:LISTEN -t) $(lsof -nP -iTCP:3001 -sTCP:LISTEN -t) $(cat /tmp/aihot-deploy-worker.pid)`；数据在容器 `aihot-db` 和仓库 `.data/`。切回 Docker 部署后按 `deploy/mac/start-mac.sh`。
