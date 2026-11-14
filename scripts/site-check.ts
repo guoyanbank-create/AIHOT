@@ -6,8 +6,8 @@ import { SITE } from "@aihot/site";
 /** 会话 cookie 的名字（packages/backend/src/admin/auth.ts 的 SESSION_COOKIE）。 */
 const SESSION_COOKIE = "aihot_admin";
 
-/** 登录后应当能打开的页面（/admin 打开后跳到信源页，和其它页一样算可用）。 */
-const PAGES = ["/", "/all", "/hot", "/daily", "/daily/archive", "/topics", "/starred", "/agent", "/about", "/changelog", "/feedback", "/terms", "/privacy", "/more", "/admin"];
+/** 登录后应当能打开的页面（/admin 打开后跳到信源页，和其它页一样算可用）；最后五个是调研工作台的主菜单。 */
+const PAGES = ["/", "/all", "/hot", "/daily", "/daily/archive", "/topics", "/starred", "/agent", "/about", "/changelog", "/feedback", "/terms", "/privacy", "/more", "/admin", "/today", "/tasks", "/ledger", "/sources", "/settings"];
 /** 机器出口：匿名时 401，登录后 200 且类型对。 */
 const EXITS: Array<[path: string, type: RegExp]> = [
   ["/api/v1/items", /json/],
