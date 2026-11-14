@@ -193,4 +193,6 @@ node scripts/verify-private.ts --base http://127.0.0.1:3000 --password '<ADMIN_P
 - 海外信源抓不到时在 `.env` 设 `EGRESS_PROXY_URL`（`.cn`、`.local`、私有地址仍直连）。
 - 运行覆盖新增 `feeds` / `web` 计数，任务详情里显示“RSS 信源 N 个、网页信源 N 个”，摘要里也会写。
 
+实战（部署实例，2026-11-15）：给任务配了 5 个主流媒体 RSS（BBC World、卫报 World、纽约时报 World、中国新闻网滚动、TechCrunch）+ 1 个网页信源（路透社 World），手动运行结果：`succeeded`，读 5 个 RSS 信源 + 1 个网页信源、16 条线索、12 篇原文、8 条台账，证据 URL 和渠道都是真实媒体（如 nytimes/bbc/guardian 的实际文章）；搜索 0 次（没有 Tavily，任务有真实信源时不混 fixtures）、模型 1 次。第一次运行曾因模型自造 kind 枚举值被判不可用而失败；已加“带错误重试一次更严格的 JSON”和“只抽取与研究目标相关的变化”，重跑成功。
+
 测试：模块测试 27 个（新增 RSS/Atom 解析 3 个、RSS+网页信源流程 1 个：搜索不被调用、渠道正确、不混 fixtures）。

@@ -2,6 +2,7 @@
 // 来源观点必须标作者，AI 不能写“人工结论”；校验不过的条目记 rejected，不静默丢掉。
 import { z } from "zod";
 import { chatJson } from "@aihot/backend/providers/llm";
+import { ModelOutputError } from "@aihot/backend/providers/receipts";
 import { sha256 } from "@aihot/backend/lib/ids";
 import type { LedgerKind, LedgerStatus, ResearchTask } from "../contracts.ts";
 import type { NewEvidence } from "../ledger.ts";
@@ -37,6 +38,8 @@ export interface VerifiedEntry {
 }
 
 const SYSTEM = `你是长期研究工作台的抽取器。根据“研究目标”和“本次读到的原文”，只输出 JSON：{"entries":[...]}。
+kind 和 status 必须严格使用下面给出的英文小写枚举值，不能自造、不能翻译、不能加空格；其余字段用中文。
+只输出与研究目标直接相关的变化：与研究目标无关的原文直接忽略（没有相关内容就输出 {"entries":[]}），不要为了填满条目把无关新闻写进来。
 每条：
 - entryKey：稳定的主题键（同一件事/同一条事实的后续版本用同一个键，用英文小写、斜杠分隔，例如 openai/api-pricing）。
 - kind：fact（官方/原文披露的事实）、source_view（某来源的观点或报道，必须给 author）、ai_assessment（你的研判，不是原文事实）。
@@ -56,18 +59,29 @@ export async function extractWithModel(input: {
   pages: readonly FetchedPage[];
   history: string;
 }): Promise<{ candidates: Candidate[]; modelCalls: number; model: string }> {
-  const result = await chatJson({
-    model: "default",
+  const build = (repair?: string) => ({
+    model: "default" as const,
     purpose: "research.extract",
     subject: input.task.id,
-    promptVersion: "research.extract.1",
+    promptVersion: "research.extract.2",
     system: SYSTEM,
-    user: `研究目标：${input.task.goal}\n\n已有的最新台账（避免重复）：\n${input.history || "（无）"}\n\n本次读到的原文：\n${pageBlock(input.pages)}`,
+    user: `研究目标：${input.task.goal}\n\n已有的最新台账（避免重复）：\n${input.history || "（无）"}\n\n本次读到的原文：\n${pageBlock(input.pages)}${repair ? `\n\n上一次输出不可用：${repair}\n请只输出符合上面格式的 JSON，kind/status 用英文枚举值。` : ""}`,
     schema: EXTRACT_SCHEMA,
-    temperature: 0.1,
+    temperature: repair ? 0 : 0.1,
     maxTokens: 2400,
     timeoutMs: 180_000,
   });
+  let result;
+  let modelCalls = 0;
+  try {
+    result = await chatJson(build());
+    modelCalls = 1;
+  } catch (error) {
+    if (!(error instanceof ModelOutputError)) throw error;
+    // 模型偶尔会自造枚举值；带着错误再要求一次严格 JSON（只重试一次，仍失败就如实记失败）。
+    result = await chatJson(build(error.message.slice(0, 500)));
+    modelCalls = 2;
+  }
   const candidates = result.data.entries.map((entry) => ({
     entryKey: entry.entryKey.trim(),
     kind: entry.kind,
@@ -78,7 +92,7 @@ export async function extractWithModel(input: {
     quote: entry.quote?.trim() || null,
     evidenceUrls: entry.evidenceUrls,
   }));
-  return { candidates, modelCalls: 1, model: result.model };
+  return { candidates, modelCalls, model: result.model };
 }
 
 /**
