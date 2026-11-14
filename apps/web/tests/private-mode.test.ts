@@ -2,6 +2,7 @@
 // 登录要用的静态资源仍可访问。网关在 apps/web/server.ts（生产）和 vite 的 dev 网关里，见 app/lib/private.server.ts。
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
+import { SIGN_IN_HOME } from "@aihot/contracts/admin";
 import { privateAllowed } from "../app/lib/private.server.ts";
 import { fakeApi, startWebServer, type WebServer } from "./web-server.ts";
 
@@ -67,9 +68,9 @@ test("登录后接口只进本机缓存，页面不再被搜索引擎留存", as
   assert.match(meta.headers.get("x-robots-tag") ?? "", /noindex/);
   await meta.text();
 
-  // 已有会话时登录页把人送回后台（它的 loader 先问 /api/admin/me）。
+  // 已有会话时登录页把人送回默认落地页（这个站是工作台的今日；它的 loader 先问 /api/admin/me）。
   const back = await fetch(origin + "/admin/login", { headers: { cookie: SESSION }, redirect: "manual" });
   assert.equal(back.status, 302);
-  assert.equal(back.headers.get("location"), "/admin");
+  assert.equal(back.headers.get("location"), SIGN_IN_HOME);
   await back.text();
 });
