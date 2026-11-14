@@ -120,8 +120,10 @@
 npm run typecheck
 DATABASE_URL=postgres://…/myhot_test npm test     # 库名必须以 _test 或 _ci 结尾，数据库账号要能建库
 npm run build -w @aihot/web && npm run test:web
-node scripts/smoke.ts --base http://localhost:3000   # 站点跑起来以后
+node scripts/verify-private.ts --base http://localhost:3000 --password '<ADMIN_PASSWORD>'   # 站点跑起来以后
 ```
+
+本站是全站私有的（见[部署 · 全站私有](deploy.md#全站私有默认)）：原来的匿名 `scripts/smoke.ts` 只会被重定向到登录页，部署检查用上面的 `verify-private.ts`。公开站点（引擎原版）仍然用 `scripts/smoke.ts`。
 
 改写提示词、重新校准门槛不会让测试失败：测试按每一步实际渲染出的提示词认请求，门槛从 `industry/selection.ts` 读。`tests/` 里有些测试用的是示例行业的分类、标签和公司（比如 `ai-models`、“模型发布”、Anthropic）。改了 `industry/taxonomy.ts` 以后这些测试会失败，把例子换成你行业里的对应项即可，测的规则本身不用改。
 

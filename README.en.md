@@ -18,6 +18,8 @@
   Swap in your own sources and your own know-how for what matters, and it becomes the news site for your field.
 </p>
 
+> **This repository is "Long-term Research Workspace"**: a single-user, private fork of the [AIHOT](https://github.com/KKKKhazix/AIHOT) open-source framework (MIT). The name is a working title. The site is private by default (see [Deploy · private site](docs/deploy.md#全站私有默认)); the first phases build long-term tasks, an evolving ledger and proactive research. The upstream framework's documentation is kept below for reference and syncing.
+
 <p align="center">
   <a href="README.md">简体中文</a> · <b>English</b>
 </p>

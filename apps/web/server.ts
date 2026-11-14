@@ -11,6 +11,7 @@ import type { ServerBuild } from "react-router";
 import { isApiOwned, resolveRedirect } from "@aihot/contracts/http-policy";
 import { BROWSER_MAX_SECONDS } from "./app/lib/api.server.ts";
 import { proxyToApi } from "./app/lib/api-proxy.server.ts";
+import { privateGate, privateMode, privateNoStore } from "./app/lib/private.server.ts";
 import { logError } from "./app/lib/errors.server.ts";
 
 const PORT = Number(process.env.WEB_PORT || 3000);
@@ -151,6 +152,14 @@ async function handle(req: import("node:http").IncomingMessage, res: import("nod
     return res.end(decision.location ? undefined : decision.status === 410 ? "Gone" : "Not found");
   }
 
+  // 构建产物是公开的静态资源，和原来一样先发；不出内容的文件不需要过登录。
+  if (!isApiOwned(pathname) && (req.method === "GET" || req.method === "HEAD") && pathname.includes(".") && (await serveStatic(pathname, res))) return;
+
+  // 全站私有：除登录页、登录本身、必要静态资源和构建产物外，未登录的页面去登录，接口和数据请求答 401。
+  if (await privateGate(req, res, pathname, search)) return;
+  // 已登录的响应也不进共享缓存、不被搜索引擎留存（见 private.server.ts）。
+  privateNoStore(res);
+
   if (isApiOwned(pathname)) {
     // The visitor's address, decided here: the one the trusted proxy saw (the last X-Forwarded-For
     // entry), or this connection's own. Both headers carry only that.
@@ -158,8 +167,6 @@ async function handle(req: import("node:http").IncomingMessage, res: import("nod
     const client = TRUST_PROXY && forwarded.length ? forwarded[forwarded.length - 1]! : (req.socket.remoteAddress ?? "");
     return proxyToApi(req, res, { "x-forwarded-for": client, "x-real-ip": client });
   }
-
-  if ((req.method === "GET" || req.method === "HEAD") && pathname.includes(".") && (await serveStatic(pathname, res))) return;
   pageResponse(req, res);
   return ssr(req, res);
 }

@@ -12,7 +12,11 @@ import { SERVER_MODULES } from "@aihot/site/modules/server";
 
 const args = process.argv.slice(2);
 const full = args.includes("--full");
-const url = new URL(args.find((a) => !a.startsWith("--")) ?? "http://127.0.0.1:3001/api/mcp");
+/** 全站私有的站点只在登录后提供 MCP：用后台会话 cookie 检查；公开站不传就匿名访问。 */
+const cookieAt = args.indexOf("--cookie");
+const cookie = cookieAt >= 0 ? args[cookieAt + 1] : undefined;
+const positional = args.filter((arg, i) => !arg.startsWith("--") && !(cookieAt >= 0 && i === cookieAt + 1));
+const url = new URL(positional[0] ?? "http://127.0.0.1:3001/api/mcp");
 /** The site's modules' tools, after the engine's. */
 const moduleTools = SERVER_MODULES.flatMap((m) => m.agent?.abilities ?? []).map((a) => ({
   name: mcpToolName(a.mcp.tool),
@@ -48,7 +52,22 @@ async function call(
   return result;
 }
 
-await client.connect(new StreamableHTTPClientTransport(url));
+// 全站私有的站点只在登录后提供 MCP：没有 cookie 时先看匿名握手是不是被挡（401）。被挡就是设计如此，
+// 不是契约坏了；要检查整套工具契约请带 --cookie。
+if (!cookie) {
+  const probe = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "mcp-check", version: "1" } } }),
+    signal: AbortSignal.timeout(30_000),
+  }).catch(() => null);
+  await probe?.text().catch(() => "");
+  if (probe?.status === 401 || probe?.status === 403) {
+    console.log("private site: MCP is closed to anonymous clients (401); pass --cookie to check the tool contract");
+    process.exit(0);
+  }
+}
+await client.connect(new StreamableHTTPClientTransport(url, cookie ? { requestInit: { headers: { cookie } } } : undefined));
 try {
   const info = client.getServerVersion?.();
   console.log("server:", JSON.stringify(info));

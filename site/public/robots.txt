@@ -1,9 +1,3 @@
+# 全站私有：这里没有公开页面，搜索引擎不用抓，也抓不到（见 site/site.ts 的 PRIVATE_SITE）。
 User-agent: *
-Allow: /api/v1/
-Allow: /api/mcp
-Disallow: /api/
-Disallow: /admin/
-Disallow: /starred
-Disallow: /feedback
-
-Sitemap: {{siteUrl}}/sitemap.xml
+Disallow: /

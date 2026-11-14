@@ -18,6 +18,8 @@
   把信源换成你的，把精选标准换成你的 KnowHow，它就是你的行业热点站。
 </p>
 
+> **本仓库是“长期调研工作台”**：基于 [AIHOT](https://github.com/KKKKhazix/AIHOT) 开源框架（MIT）做的单人私有 fork。站名是待确认的工作标题；默认全站私有（见[部署 · 全站私有](docs/deploy.md#全站私有默认)），先做长期任务、动态台账和主动研究。上游框架的说明保留在下面，供对照和同步。
+
 <p align="center">
   <b>简体中文</b> · <a href="README.en.md">English</a>
 </p>
