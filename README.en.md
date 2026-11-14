@@ -23,10 +23,12 @@
 ## Run it (this fork)
 
 ```bash
-bash deploy/mac/doctor-mac.sh                    # M4 Mac check (read-only)
-node scripts/init-env.ts --llm-key <model API key>
-bash deploy/mac/start-mac.sh                     # build, migrate, start, private-boundary check
+npm ci
+node scripts/init-env.ts --llm-key <model API key>   # writes .env; the admin password is printed once
+./start.sh                                           # local Node + PostgreSQL container
 ```
+
+Daily: `./status.sh`, `./logs.sh`, `./stop.sh`; development: `./dev.sh`; Docker: `bash deploy/mac/start-mac.sh`. Project guide and docs index: [docs/research-workspace/README.md](docs/research-workspace/README.md).
 
 - Five menus: Today / Tasks / Ledger / Sources / Settings. The whole site is private: pages and every machine exit require sign-in.
 - Mac runbook (backup, isolated restore, sleep limitations): [docs/research-workspace/mac.md](docs/research-workspace/mac.md)

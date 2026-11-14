@@ -16,3 +16,5 @@ package/
 fontsource-noto-sans-sc-*.tgz
 # 部署备份（数据库、data 卷、配置；含密钥，不入库）
 backups/
+# 本机运行时的进程号和日志
+.run/
