@@ -78,8 +78,10 @@ services:
       AIHOT_RELEASE: ${AIHOT_RELEASE:-}
       WEB_HOST: 0.0.0.0
       WEB_PORT: "3000"
+    # 默认只在本机 127.0.0.1 上开 3000：工作台是单人私有站，不暴露到局域网。确实要从别的机器访问时，
+    # 在 .env 里设 BIND_ADDR=0.0.0.0（鉴权仍然生效），并先读 docs/deploy.md 的“全站私有”。
     ports:
-      - "${PORT:-3000}:3000"
+      - "${BIND_ADDR:-127.0.0.1}:${PORT:-3000}:3000"
     depends_on:
       api:
         condition: service_started

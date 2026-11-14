@@ -301,6 +301,10 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
       await db`INSERT INTO article_discoveries (article_id, source_id, via, discovered_at)
                VALUES (${newId}, ${m.sourceId}, ${m.via}, ${discoveredAt}) ON CONFLICT DO NOTHING`;
       await reconcileMaterialSource(db, newId, { sourceId: m.sourceId, author: m.author });
+      await emit("materialCommitted", {
+        articleId: newId, sourceId: m.sourceId, revision: 1, created: true, title, url: m.url,
+        publishedAt: t.publishedAt, discoveredAt, contentHash: hash,
+      }, db);
       return { articleId: newId, created: true, revised: false, backfill: t.backfill };
     }
     existing = await lockMaterial(db, identityKey);
@@ -416,6 +420,15 @@ export async function reviseMaterial(db: Db, articleId: string, revision: { set:
     RETURNING revision`;
   await db`INSERT INTO article_revisions (article_id, revision, content_hash, title, body_text)
            VALUES (${articleId}, ${row!.revision}, ${revision.hash}, ${revision.title}, ${revision.bodyText})`;
+  // 材料版本提交：任务支路要看到所有入库材料，见 backend/modules.ts 的 materialCommitted。
+  const [committed] = await db<{ source_id: string; url: string; published_at: Date | null; discovered_at: Date }[]>`
+    SELECT source_id, url, published_at, discovered_at FROM articles WHERE id = ${articleId}`;
+  if (committed) {
+    await emit("materialCommitted", {
+      articleId, sourceId: committed.source_id, revision: row!.revision, created: false, title: revision.title,
+      url: committed.url, publishedAt: committed.published_at, discoveredAt: committed.discovered_at, contentHash: revision.hash,
+    }, db);
+  }
   // Only withdraw an existing projection; the first publication still belongs to completed analysis.
   if ((await db`SELECT 1 FROM publications WHERE article_id = ${articleId}`).length) {
     const published = await publishArticleTx(db as Tx, articleId);

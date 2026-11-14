@@ -5,13 +5,14 @@ import { defineConfig, type Plugin } from "vite";
 import { isApiOwned, resolveRedirect } from "@aihot/contracts/http-policy";
 import { DEPLOYMENT } from "@aihot/site";
 import { proxyToApi } from "./app/lib/api-proxy.server.ts";
+import { privateGate, privateNoStore } from "./app/lib/private.server.ts";
 
 /** Development stand-in for the production web server: the shared redirect table and api-owned path routing. */
 function devEdge(): Plugin {
   return {
     name: "aihot-dev-edge",
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
+      server.middlewares.use(async (req, res, next) => {
         const raw = req.url ?? "/";
         const qi = raw.indexOf("?");
         const pathname = qi >= 0 ? raw.slice(0, qi) : raw;
@@ -24,6 +25,9 @@ function devEdge(): Plugin {
           res.statusCode = decision.status;
           return res.end();
         }
+        // 全站私有：开发时也和部署一样，未登录的页面去登录、接口答 401（见 app/lib/private.server.ts）。
+        if (await privateGate(req, res, pathname, search)) return;
+        privateNoStore(res);
         if (!isApiOwned(pathname)) return next();
         // The api sees the Host it gets in production.
         if (DEPLOYMENT.originHost) req.headers.host = DEPLOYMENT.originHost;

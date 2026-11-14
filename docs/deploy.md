@@ -30,6 +30,24 @@ docker compose up -d --build
 
 `docker compose` 会起五个容器：`db`（PostgreSQL 17）、`setup`（每次启动先跑数据库迁移和种子数据，然后退出）、`api`、`worker`（抓取、模型处理、定时任务）、`web`（网页）。`web` 只接收网站地址、API 地址等网页配置，通过 HTTP 读取 API；数据库、模型和管理员密钥，以及数据卷，只交给后端容器。
 
+### 全站私有（默认）
+
+这个站是单人使用的长期调研工作台，**默认全站私有**（`site/site.ts` 的 `PRIVATE_SITE`）：除登录页和必要的静态资源外，页面、所有 API、RSS、MCP、llms.txt、站点地图、分享图和导出都要登录才能用。没有会话时：
+
+- 打开页面会跳到 `/admin/login`，登录后回到原来的地址；
+- `/api/*`、页面的数据请求和写操作返回 `401`；
+- `noindex` 和 `robots.txt` 只是补充说明，不是权限：真正的边界是每个请求都先问后台会话。
+
+`docker compose` 默认把网页只绑在 `127.0.0.1:3000`，`api`、`worker`、`db` 都不发布端口。要从局域网里别的机器访问，在 `.env` 里设 `BIND_ADDR=0.0.0.0`（登录检查照旧生效）；用 `--profile https` 时由 Caddy 从容器网络访问网页，不需要额外开放宿主端口。
+
+部署后跑一次私有边界检查。它会先确认没有会话的人拿不到任何页面和出口，再用管理员密码登录，确认页面、RSS、llms、站点地图、分享图、公开 API 和 MCP 都能用：
+
+```bash
+node scripts/verify-private.ts --base http://127.0.0.1:3000 --password '<ADMIN_PASSWORD>'
+```
+
+`PRIVATE_SITE=false` 只给引擎公开页面的测试或公开站用，私有部署不要设置它。api 自己不做第一道鉴权：它只监听容器网络（Docker）或 `127.0.0.1`（本机直跑），由网页进程挡外部请求；不要让 api 的端口对外。
+
 ### 在中国大陆的服务器上
 
 - 构建时 npm 走国内镜像：`docker compose build --build-arg NPM_REGISTRY=https://registry.npmmirror.com`，然后 `docker compose up -d`。
@@ -44,7 +62,7 @@ docker compose up -d --build
 ```bash
 SITE_URL=https://example.com
 SITE_DOMAIN=example.com
-PORT=127.0.0.1:3000        # 3000 端口只给本机的 Caddy 用，不直接对外
+PORT=3000                  # 只在本机 127.0.0.1 上开（默认；Caddy 从容器网络访问 web，不需要对宿主网卡开放）
 TRUST_PROXY=true           # 访客地址从 Caddy 转来的请求头里读
 ```
 
@@ -98,6 +116,15 @@ docker compose run --rm setup && docker compose up -d
 新迁移遇到长期占锁会报出文件名和等待超时，先处理占锁事务，再重跑 setup，不要跳过迁移或改写迁移账本。并发索引创建中断可能留下无效索引：核实报错中的对象后，用 `DROP INDEX CONCURRENTLY <索引名>` 清理该失败索引再重跑；有效但定义不同的同名索引须先核对差异。这些保护不改变上述 Docker 更新顺序，跨旧版本升级仍可能执行历史上的破坏性迁移。
 
 下面按时间从新到旧列出每次更新要注意的事。
+
+#### 全站私有与调研工作台模块（2026 年 11 月 14 日）
+
+新增 `modules/research-workspace/` 的数据库迁移（任务、信源、运行、台账、证据、阅读状态、事务 outbox、任务报告八张新表），`setup` 启动时自动执行；不改已有表、不动已有数据。要注意的变化：
+
+- **全站私有默认打开**：除登录页和必要静态资源外，页面、API、RSS、MCP、llms.txt、站点地图、分享图和导出都只给登录后的本人看；未登录访问页面跳到 `/admin/login`，接口返回 401。见上方“全站私有（默认）”。只有引擎公开页面的测试/公开站才设 `PRIVATE_SITE=false`。
+- **端口绑定**：`docker compose` 的网页端口默认只绑 `127.0.0.1`。以前用 `PORT=127.0.0.1:3000` 的要改成 `PORT=3000`；确实要从别的机器访问时设 `BIND_ADDR=0.0.0.0`。HTTPS（Caddy）不受影响。
+- **`robots.txt`** 改成 `Disallow: /`，不再列站点地图；`site/site.ts` 的站名改成工作标题“长期调研工作台”，并去掉了上游品牌署名（`poweredBy`、`footerNote` 置空）。
+- **站点私有后**，公开 API、MCP、RSS 需要带后台会话 cookie 才能访问；给 Agent 或外部程序的接入口在后续阶段按需另做授权，不复用公开出口。
 
 #### 百度主动推送（2026 年 11 月 8 日）
 
@@ -322,4 +349,4 @@ cd apps/web && NODE_ENV=production node --env-file=../../.env server.ts   # 网�
 
 三个进程要一直运行，生产环境用 systemd 或 pm2 守护（守护配置里同样设 `NODE_ENV=production`）。停止 worker 时给它 515 秒（systemd 的 `TimeoutStopSec=515`、pm2 的 `kill_timeout: 515000` 和 `treekill: false`），覆盖队列的 470 秒排空和数据库清理；systemd 还需设 `KillMode=mixed`，只先通知主进程停止接任务，让正在备份的 `pg_dump`、`tar` 自然完成。被提前杀掉的调用结果不明，要等至少半小时自动放行后才会重试。
 
-开发时用带热更新的方式：`npm run dev:api`、`npm run dev:worker`、`npm run dev:web`。开发时想免登录进后台，在 `.env` 里设 `DEV_AUTH_ROLE=admin`（生产环境会拒绝启动）。
+开发时用带热更新的方式：`npm run dev:api`、`npm run dev:worker`、`npm run dev:web`。开发时网页也走全站私有，未登录会跳到登录页；想免登录开发，在 `.env` 里设 `DEV_AUTH_ROLE=admin`（生产环境会拒绝启动）。

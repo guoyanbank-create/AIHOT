@@ -1,10 +1,30 @@
-// Opens the site's main pages and machine exits and checks each answers: the whole-site check after a
-// deploy, and CI's check of the built site on an empty database.
+// 整站检查，部署后跑：公开站匿名打开每个页面和机器出口都应答；本站默认全站私有，匿名请求按设计全部被挡，
+// 这时改查“匿名拿不到任何东西、登录页可用”，有 ADMIN_PASSWORD（例如 compose 的 setup 容器从 .env 里拿到）
+// 时再登录检查页面、出口和 MCP。私有站点的专门部署检查是 scripts/verify-private.ts。
 //   node scripts/smoke.ts [--base http://localhost:3000]
 import { SITE } from "@aihot/site";
+import { anonymousChecks, authenticatedChecks, probePrivate, signIn } from "./site-check.ts";
 
 const at = process.argv.indexOf("--base");
 const base = (at > 0 ? process.argv[at + 1] : process.env.SITE_URL) ?? "http://localhost:3000";
+
+// 全站私有的站点：先查匿名边界，再（有密码时）登录查内容。
+if (await probePrivate(base).catch(() => false)) {
+  let failures = await anonymousChecks(base);
+  const password = process.env.ADMIN_PASSWORD ?? "";
+  if (password) {
+    const cookie = await signIn(base, password);
+    if (cookie) failures += await authenticatedChecks(base, cookie);
+    else {
+      console.log("✗ 登录（ADMIN_PASSWORD 不对？）");
+      failures += 1;
+    }
+  } else {
+    console.log("没有 ADMIN_PASSWORD：跳过登录后的页面与出口检查（私有站点的匿名边界已经检查过）");
+  }
+  console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");
+  process.exit(failures ? 1 : 0);
+}
 
 const PAGES = ["/", "/all", "/hot", "/daily", "/daily/archive", "/topics", "/starred", "/agent", "/about", "/changelog", "/feedback", "/terms", "/privacy", "/more", "/admin/login"];
 const MACHINE: Array<[path: string, type: RegExp]> = [

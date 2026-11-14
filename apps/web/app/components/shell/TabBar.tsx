@@ -26,7 +26,8 @@ export function TabBar({ changelogVersion }: { changelogVersion: string | null }
   const restored = useSyncExternalStore(subscribe, () => rememberedTab(key), serverTab);
   const items = tabs();
   const requested = screen.tab ?? restored ?? last.current ?? screen.home;
-  const active = requested && !items.some((t) => t.key === requested) ? "featured" : requested;
+  // 请求的 tab 不在栏里（例如只保留了模块的菜单）时，落在第一项，而不是已经不存在的“精选”。
+  const active = requested && items.some((t) => t.key === requested) ? requested : items[0]?.key;
   useIsoLayoutEffect(() => {
     // Do not overwrite a saved entry with the server fallback before hydration reads this browser's tab.
     if (restored === null) return;

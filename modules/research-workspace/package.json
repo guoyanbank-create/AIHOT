@@ -1,0 +1,22 @@
+{
+  "name": "@aihot/research-workspace",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./module.ts",
+    "./server": "./server.ts",
+    "./web": "./web.tsx",
+    "./contracts": "./contracts.ts",
+    "./tasks": "./tasks.ts",
+    "./ledger": "./ledger.ts",
+    "./runs": "./runs.ts",
+    "./reports": "./reports.ts",
+    "./outbox": "./outbox.ts",
+    "./templates/*": "./templates/*"
+  },
+  "dependencies": {
+    "fast-xml-parser": "5.12.0",
+    "zod": "4.6.6"
+  }
+}

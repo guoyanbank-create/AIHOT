@@ -63,6 +63,8 @@ flowchart LR
 
 框架里没有、只有你这个站要的功能（比如一个专门的榜单或监控页），做成模块：一个功能一个文件夹 `modules/<名字>/`，是一个名为 `@aihot/<名字>` 的 npm 包，装着它自己的后端、接口、页面、样式、数据库迁移和测试。
 
+这个 fork 现在有一个模块：`modules/research-workspace/`（长期调研工作台）。它的范围、接口和当前进度见 [调研工作台](research-workspace/baseline.md)。
+
 | 文件 | 内容 |
 |---|---|
 | `module.ts` | 它的地址：页面、跳转、交给 api 处理的路径（类型见 `packages/contracts/src/modules.ts`） |

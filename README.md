@@ -18,6 +18,25 @@
   把信源换成你的，把精选标准换成你的 KnowHow，它就是你的行业热点站。
 </p>
 
+> **本仓库是“长期调研工作台”**：基于 [AIHOT](https://github.com/KKKKhazix/AIHOT) 开源框架（MIT）做的单人私有 fork。站名是待确认的工作标题；默认全站私有（见[部署 · 全站私有](docs/deploy.md#全站私有默认)），先做长期任务、动态台账和主动研究。上游框架的说明保留在下面，供对照和同步。
+
+## 跑起来（本 fork）
+
+```bash
+npm ci
+node scripts/init-env.ts --llm-key <模型 API Key>   # 生成 .env，管理员密码只打印一次
+./start.sh                                          # 本机运行：Node + PostgreSQL 容器（数据在 Docker 卷）
+```
+
+- 日常：`./status.sh` 看状态、`./logs.sh api|worker|web` 看日志、`./stop.sh` 停（数据保留）；开发：`./dev.sh`；Docker 常驻部署：`bash deploy/mac/start-mac.sh`。
+- 主界面五个菜单：今日 / 任务 / 台账 / 信源 / 设置；全站私有，页面和 API/RSS/MCP/llms/站点地图/分享图/导出都要登录。
+- **项目说明与文档入口**：[docs/research-workspace/README.md](docs/research-workspace/README.md)（目录速查、配置、运维、开发、文档索引、已知限制）
+- 运行手册（Docker、备份、隔离恢复、Mac 睡眠期间不运行的限制）：[docs/research-workspace/mac.md](docs/research-workspace/mac.md)
+- 接口、数据表与事件：[docs/research-workspace/api.md](docs/research-workspace/api.md)
+- 信源与材料怎么接进来：[docs/research-workspace/sources.md](docs/research-workspace/sources.md)
+- 任务模板：[modules/research-workspace/templates/task.example.json](modules/research-workspace/templates/task.example.json)
+- 进度、测试证据与已知限制：[docs/research-workspace/baseline.md](docs/research-workspace/baseline.md)
+
 <p align="center">
   <b>简体中文</b> · <a href="README.en.md">English</a>
 </p>

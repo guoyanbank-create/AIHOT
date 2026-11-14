@@ -18,16 +18,30 @@ export const EDITION_WHEN = {
   monthly: `每月 1 日 ${EDITION_TIMES.monthly}`,
 };
 
+/**
+ * 全站私有：本站是单人使用的长期调研工作台，除登录和必要静态资源外，页面、所有 API、RSS、MCP、
+ * llms.txt、站点地图、分享图和导出都只给登录后的本人看；api、数据库端口不对外发布。
+ * 网关在网页进程（apps/web/server.ts，开发时在 apps/web/vite.config.ts 的 dev 网关）读后台会话。
+ * 引擎公开页面的测试用环境变量 PRIVATE_SITE=false 关掉本项；私有部署不要设置它，也不要设成 false。
+ */
+export const PRIVATE_SITE = true;
+
+/**
+ * 登录后的默认落地页。这个站的主界面是工作台的“今日”；从某个后台页被送去登录的，仍回到那一页。
+ * 公开站点不设置时按引擎原来的规则（有后台就去 /admin，没有回首页）。
+ */
+export const SIGN_IN_HOME_PATH = "/today";
+
 export const SITE = {
   /** 站名：导航、页面标题、分享图、RSS、MCP、后台都用它。 */
-  name: "MyHOT",
+  name: "长期调研工作台",
   /**
    * 行业词：拼进默认说法里，比如“AI 日报”“AI 动态”。
    * 改成“法律”“HR”“黄金”之类，页面上就会变成“法律日报”“法律动态”。
    */
   subject: "AI",
   /** 首页的完整标题（浏览器标签、搜索结果）。 */
-  homeTitle: "MyHOT — AI 行业动态 · 每日精选与日报",
+  homeTitle: "长期调研工作台 — 长期任务、动态台账与研究进度",
   /** 主题目录页（/topics）的标题。 */
   topicsTitle: "AI 主题：公司与模型、技术方向、内容形态的最新动态",
   /** 反馈表单输入框里的示例。 */
@@ -58,10 +72,10 @@ export const SITE = {
   /** 标准图标（favicon.ico、icon.png、icon-192.png、apple-icon.png、logo.svg）以外也放在网站根目录的图标，site/brand/ 里的文件名（选填）；manifest.webmanifest 或外站引用了它们时用。 */
   rootIcons: [] as string[],
   /**
-   * MCP 工具名的前缀（小写字母、数字、下划线），工具会叫 myhot_get_latest、myhot_search……
+   * MCP 工具名的前缀（小写字母、数字、下划线），工具会叫 research_get_latest、research_search……
    * 已经有人接入后就不要再改。
    */
-  mcpPrefix: "myhot",
+  mcpPrefix: "research",
   /**
    * 公开接口（MCP、OpenAPI、llms.txt）的版本号，只升不降。
    * 改了接口里已有的字段或含义时升主版本，并在部署说明里写清。
@@ -70,23 +84,23 @@ export const SITE = {
   /** 对外联系邮箱（选填）：llms.txt 和给 Agent 的使用说明里会写。 */
   contactEmail: null as string | null,
   /** 关于页底部的一行小字（选填）。 */
-  footerNote: "由 AIHOT 开源框架驱动",
+  footerNote: null as string | null,
   /** 中国大陆网站的 ICP 备案号（选填），填了就显示在侧栏底部和“我的”页底部，并链接到工信部备案系统。 */
   icp: null as string | null,
   /** 中国大陆网站的公安备案信息（选填），填了显示在侧栏底部和“我的”页底部。 */
   psb: null as string | null,
   /** 源码的 GitHub 仓库地址（选填），填了就在侧栏底部和“我的”页底部显示“GitHub 开源”。 */
   github: null as string | null,
-  /** 页脚的“由 X 驱动”（选填）：填了就在侧栏底部和“我的”页底部显示，链到它的网址。默认链回上游 AIHOT，不想要就写 null。 */
-  poweredBy: { name: "AIHOT", url: "https://aihot.news" } as { name: string; url: string } | null,
+  /** 页脚的“由 X 驱动”（选填）：填了就在侧栏底部和“我的”页底部显示，链到它的网址。这一项留空，不使用上游品牌。 */
+  poweredBy: null as { name: string; url: string } | null,
   /** 结构化数据里的网站运营者（搜索引擎用）。 */
   organization: {
-    name: "MyHOT",
+    name: "长期调研工作台",
     /** 创始人（选填）。 */
     founder: null as Founder | null,
   },
   /** 抓取信源时报上的名字和版本（User-Agent 里用），不要冒用别的站。 */
-  crawlerName: "MyHOTBot/1.0",
+  crawlerName: "ResearchWorkspaceBot/1.0",
 } as const;
 
 /** 使用规则和隐私说明两页（正文在 pages/ 里）。 */
@@ -125,10 +139,11 @@ export const POLICY = {
 /** 导航（电脑侧栏、手机底栏、“我的”页）。 */
 export const NAV = {
   /**
-   * 不放进导航的引擎入口，目前只支持热点榜（"/hot"）和主题（"/topics"）。页面照样能打开；原来回到它的返回按钮和链接改回精选，
-   * 写 "/hot" 时首页也不放当前热点。
+   * 不放进导航的引擎入口，写路径原文（首页是 "/"，更多是 "/more"）。页面照样能打开；隐藏 "/hot" 时首页也不放当前热点，
+   * 隐藏 "/topics" 时搜索框和“我的”页不再列主题入口。这个站只保留模块的五个主菜单（今日、任务、台账、信源、设置），
+   * 所以引擎入口全部隐藏。
    */
-  hidden: [] as Array<"/hot" | "/topics">,
+  hidden: ["/", "/all", "/hot", "/daily", "/topics", "/starred", "/agent", "/about", "/changelog", "/feedback", "/more"] as string[],
 };
 
 /** 条目卡片和详情页上的几处说法和显示。 */

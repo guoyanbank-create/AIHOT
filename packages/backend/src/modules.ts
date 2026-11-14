@@ -107,6 +107,21 @@ export interface SitemapEntry {
   priority?: number;
 }
 
+/** A material version committed by `content/materials.ts` (upsert of new material, a revision, or body extraction). */
+export interface MaterialCommit {
+  articleId: string;
+  sourceId: string;
+  /** The stored version: 1 for new material, the new revision number otherwise. */
+  revision: number;
+  /** New material; false for a new revision of already stored material. */
+  created: boolean;
+  title: string;
+  url: string;
+  publishedAt: Date | null;
+  discoveredAt: Date;
+  contentHash: string | null;
+}
+
 /**
  * What happened in the engine, for modules that act on it (`emit` below). A handler runs in the process
  * that made the change and, given one, inside its transaction.
@@ -128,6 +143,14 @@ export interface EngineHooks {
    * past its host and origin checks) or a module's own. Never awaited and must not throw.
    */
   exitServed: (exit: string, req: FastifyRequest) => void;
+  /**
+   * A material version was committed, in the same transaction as the write: new material or a new
+   * revision, from any entrance (collectors, external reports, imports, body extraction). Unlike
+   * articleChanged (which follows the public projection), it runs for every stored material, including
+   * official notices that never enter the news selection. A duplicate discovery of unchanged content is
+   * not a version and does not emit. Modules write their transactional outbox here (content/materials.ts).
+   */
+  materialCommitted: (change: MaterialCommit, tx: Db) => Promise<void>;
 }
 
 /** A use of sources a module declares (ServerModule.sourceUses). */

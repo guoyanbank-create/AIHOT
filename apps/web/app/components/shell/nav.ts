@@ -62,19 +62,18 @@ export function navUp(entry: keyof typeof UP): { to: string; name: string; back:
 
 /**
  * The sidebar: the engine's sections with the modules' between 内容 and 更多; a module naming a section
- * that is already there adds to it.
+ * that is already there adds to it. A section whose entries are all hidden is not drawn.
  */
 export function sidebar(): Array<{ title: string; items: NavItem[] }> {
-  const [content, ...rest] = SECTIONS;
-  const more = rest.pop()!;
-  const sections = [content!, ...rest].map((s) => ({ ...s, items: s.items.filter((i) => inNav(i.to)) }));
+  const sections = SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => inNav(i.to)) }));
+  const more = sections.pop()!;
   for (const m of webModules()) {
     if (!m.sidebar) continue;
     const section = sections.find((s) => s.title === m.sidebar!.section);
     if (section) section.items.push(...m.sidebar.items);
     else sections.push({ title: m.sidebar.section, items: [...m.sidebar.items] });
   }
-  return [...sections, more];
+  return [...sections.filter((s) => s.items.length > 0), ...(more.items.length ? [more] : [])];
 }
 
 /** A sidebar entry is lit on its pages and the ones it covers (日报 also covers weekly and monthly reports). */
@@ -125,9 +124,10 @@ const ENGINE_TABS: Tab[] = [
   { key: "me", to: "/more", label: "我的", icon: IconUser, changelog: true },
 ];
 
-/** The tab bar: the engine's, the modules' before 我的. */
+/** The tab bar: the engine's (hidden ones left out), the modules', then 我的 when the site keeps it. */
 export function tabs(): Tab[] {
-  return [...ENGINE_TABS.slice(0, -1).filter((t) => inNav(t.to)), ...webModules().flatMap((m) => m.tabs ?? []), ENGINE_TABS.at(-1)!];
+  const me = ENGINE_TABS.at(-1)!;
+  return [...ENGINE_TABS.slice(0, -1).filter((t) => inNav(t.to)), ...webModules().flatMap((m) => m.tabs ?? []), ...(inNav(me.to) ? [me] : [])];
 }
 
 /**
