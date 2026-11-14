@@ -1,0 +1,11 @@
+{
+  "title": "AI 官方公告与定价变化",
+  "goal": "盯住 OpenAI、Anthropic、Google DeepMind 的官方公告里与模型发布、定价、合规有关的变化；低热度的公告也要进任务，不靠新闻精选的曝光。",
+  "cadence": { "kind": "daily", "at": "05:30" },
+  "outputTemplate": "先给结论，再列证据与变化；与上一版不同的地方单独标出来。",
+  "sources": [
+    { "kind": "rss", "locator": "https://openai.com/blog/rss.xml" },
+    { "kind": "web", "locator": "https://www.anthropic.com/news" },
+    { "kind": "search", "locator": "OpenAI 官方 发布 定价 公告" }
+  ]
+}

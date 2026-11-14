@@ -20,6 +20,21 @@
 
 > **This repository is "Long-term Research Workspace"**: a single-user, private fork of the [AIHOT](https://github.com/KKKKhazix/AIHOT) open-source framework (MIT). The name is a working title. The site is private by default (see [Deploy · private site](docs/deploy.md#全站私有默认)); the first phases build long-term tasks, an evolving ledger and proactive research. The upstream framework's documentation is kept below for reference and syncing.
 
+## Run it (this fork)
+
+```bash
+bash deploy/mac/doctor-mac.sh                    # M4 Mac check (read-only)
+node scripts/init-env.ts --llm-key <model API key>
+bash deploy/mac/start-mac.sh                     # build, migrate, start, private-boundary check
+```
+
+- Five menus: Today / Tasks / Ledger / Sources / Settings. The whole site is private: pages and every machine exit require sign-in.
+- Mac runbook (backup, isolated restore, sleep limitations): [docs/research-workspace/mac.md](docs/research-workspace/mac.md)
+- API, tables and events: [docs/research-workspace/api.md](docs/research-workspace/api.md)
+- Sources and materials: [docs/research-workspace/sources.md](docs/research-workspace/sources.md)
+- Task template: [modules/research-workspace/templates/task.example.json](modules/research-workspace/templates/task.example.json)
+- Progress, test evidence and known limits: [docs/research-workspace/baseline.md](docs/research-workspace/baseline.md)
+
 <p align="center">
   <a href="README.md">简体中文</a> · <b>English</b>
 </p>

@@ -20,6 +20,21 @@
 
 > **本仓库是“长期调研工作台”**：基于 [AIHOT](https://github.com/KKKKhazix/AIHOT) 开源框架（MIT）做的单人私有 fork。站名是待确认的工作标题；默认全站私有（见[部署 · 全站私有](docs/deploy.md#全站私有默认)），先做长期任务、动态台账和主动研究。上游框架的说明保留在下面，供对照和同步。
 
+## 跑起来（本 fork）
+
+```bash
+bash deploy/mac/doctor-mac.sh                    # M4 Mac 体检（只读）
+node scripts/init-env.ts --llm-key <模型 API Key>
+bash deploy/mac/start-mac.sh                     # 构建、迁移、启动、私有边界检查
+```
+
+- 主界面五个菜单：今日 / 任务 / 台账 / 信源 / 设置；全站私有，页面和 API/RSS/MCP/llms/站点地图/分享图/导出都要登录。
+- 运行手册（Mac、备份、隔离恢复、睡眠期间不运行的限制）：[docs/research-workspace/mac.md](docs/research-workspace/mac.md)
+- 接口、数据表与事件：[docs/research-workspace/api.md](docs/research-workspace/api.md)
+- 信源与材料怎么接进来：[docs/research-workspace/sources.md](docs/research-workspace/sources.md)
+- 任务模板：[modules/research-workspace/templates/task.example.json](modules/research-workspace/templates/task.example.json)
+- 进度、测试证据与已知限制：[docs/research-workspace/baseline.md](docs/research-workspace/baseline.md)
+
 <p align="center">
   <b>简体中文</b> · <a href="README.en.md">English</a>
 </p>

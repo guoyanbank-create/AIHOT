@@ -123,3 +123,46 @@ node scripts/verify-private.ts --base http://127.0.0.1:3000 --password '<ADMIN_P
 - 截图在 `evidence/`：`after-today.png`、`after-tasks.png`、`after-task-detail.png`、`after-ledger.png`、`after-ledger-drawer.png`、`after-sources.png`、`after-settings.png`；和第一阶段的 `after-signed-in-home.png`（引擎公开导航）对照。
 
 这一阶段**没有做**：真正的主动研究（SearchProvider、搜索、抓原文、抽取、写台账）、定时排程与费用上限的可配置入口、任务报告之外的待办清单。设置页显示的固定上限就是 Issue #1 给的硬上限默认值，可配置在定时与费用阶段接上；搜索凭证未配置时如实在页面上显示“未配置”，不用假结果填空。
+
+## 6. 第三阶段：T09～T15（主动研究、定时与费用）
+
+按“继续直至完成”，这一阶段接上了真正会跑的研究流程。没有搜索凭证时用明确标识的本地 fixtures，不假装联网；所有模型调用走引擎的回执和预算，测试和联调只用本地 stub。
+
+| 任务 | 内容 | 落在哪 |
+|---|---|---|
+| T09 | SearchProvider：默认 Tavily，费用进回执（估算成本记在 receipt.cost）和 budgets（每次搜索的预算行自动补齐，管理页可改）；没有 key 时退回 fixture 搜索 | `modules/research-workspace/providers/{search,fixtures,page}.ts` |
+| T10 | 主动研究流程：读任务与历史结论→有界查询计划（模型不可用回退确定性计划）→搜索→读原文（SSRF/重定向/净化走引擎 `extractFromUrl`，不付 Jina）→结构化抽取→证据校验→比较历史→写台账版本与 outbox→记运行结果 | `research/{plan,extract,run}.ts` |
+| T11 | 事实与证据规则落到写入处：事实/人工结论必须绑本次读到的原文；来源观点必须有作者；AI 不能写人工结论；人工锁定条目 AI 不覆盖；读不到原文不进台账，记 `unreadable` | `research/extract.ts`、`research/run.ts` |
+| T12 | 定时：每 5 分钟按北京时间扫描到点的任务（每天/每周节奏），同一个计划时刻只跑一次；08:10 生成任务研究摘要；`missed: "once"` 让 Mac 睡醒补跑一次 | `research/{due,summary}.ts`、`jobs.ts` |
+| T13 | 费用与上限：每次运行硬上限（查询 6、线索 30、正文 12 页、模型调用 12 次、15 分钟）；搜索/模型都过回执与预算；预算拦截记 `budget_exceeded`，不改写成没有变化 | `providers/search.ts`、`research/run.ts` |
+| T14 | 事务 outbox：材料版本与台账版本事件在各自事务里提交；每分钟派发一次（当前用于审计与后续匹配，不重复抓取或调用模型） | `outbox.ts`、`ledger.ts`、`jobs.ts` |
+| T15 | 界面：任务详情可“立即运行”、显示下次运行、覆盖区间与缺口（读不到/被拒绝/fixtures），设置页如实显示搜索凭证状态 | `web/{task,tasks,settings}.tsx`、`api.ts` |
+
+运行记录状态区分 `succeeded / no_change / partial / failed / cancelled / budget_exceeded`；覆盖缺口记在 `research_runs.coverage`（新迁移 0912），重复派发由 0913 的唯一索引兜底。
+
+本阶段验证：
+
+- 本机用本地模型 stub + fixture 搜索跑通完整流程（不连外部服务）：`succeeded`，读到 3 篇原文、写 2 条台账、拒绝 2 条不合格条目、1 份摘要、outbox 派发 2 条；覆盖与 fixtures 标识都写进运行记录。
+- 模块测试 23 个：研究流程/证据/人工锁定/失败状态/到点时间/摘要回退、接口鉴权、数据层、材料事件与回滚、outbox。
+- 截图：`evidence/after-task-detail-run.png`（立即运行、下次运行、覆盖区间）、`after-tasks-run.png`、`after-today-run.png`；与第二阶段截图对照。
+
+这一阶段仍未做：真实搜索凭证下的联网联调（需要用户提供 Tavily key 并确认调用预算）；外部通知（飞书/其他）在部署阶段按需接；材料版本事件到任务的匹配策略仍待定（当前只派发并审计）。Mac 部署与恢复脚本见第 7 节。
+
+## 7. 第四阶段：T16～T18（M4 部署与恢复）
+
+| 任务 | 内容 | 落在哪 |
+|---|---|---|
+| T16 | M4 Mac 部署脚本：体检、首次构建/迁移/启动/健康检查、安全失败（保留数据卷）、停止 | `deploy/mac/{doctor-mac,start-mac,stop}.sh`、`_common.sh` |
+| T17 | 备份与隔离恢复：PostgreSQL（pg_dump custom）、data 卷、配置版本（git HEAD、迁移清单、`env.backup` 0600）；恢复只写 `aihot_restore_*` 新库和新数据卷，不动生产 | `deploy/mac/{backup,restore}.sh` |
+| T18 | 私有边界包装脚本 + 文档：运行手册、API/Schema、信源与材料映射、任务模板、已知限制 | `deploy/mac/verify-private.sh`、`docs/research-workspace/{mac,api,sources}.md`、`modules/research-workspace/templates/task.example.json` |
+
+实际执行情况（本机 M4 Mac + colima）：
+
+- `bash deploy/mac/doctor-mac.sh`：通过（arm64、docker 29.7.2、compose 5.7.0、磁盘 118GB、配置项齐全；5432 被本地测试库占用只给 warn，因为没有发布宿主端口）。
+- `backup.sh`：在隔离的 compose 项目（postgres:17-alpine + db/data 两个卷、真实迁移 schema、插入一条任务）上跑通：db.dump（134KB）、data.tgz、git-head.txt、migrations.txt、manifest.json、env.backup（0600）。
+- `restore.sh`：把上面备份恢复进 `aihot_restore_*` 新库和 `<name>_data` 新卷，核对 `tasks=1`，并在恢复卷里看到测试文件；生产库和卷没有被碰。
+- `verify-private.sh`：起好宿主机上的 api+web 后跑通（匿名 17 项被挡、登录后页面/出口/MCP 全过）。
+- `start-mac.sh` / `stop.sh` 未在本机完整跑一遍：首次构建要拉 `node:24-trixie-slim` 和镜像层，本机到 Docker Hub 的拉取被限速到 2MB/分钟级别，没有等完。这两个脚本的逻辑只做 compose build/up/stop 与健康检查，compose 栈本身由 CI 的 docker 作业实际构建并启动验证；这里如实记录未在本机实测，不用“已验证”描述。
+- 所有脚本 `bash -n` 通过；不删除任何数据卷；`backup.sh` 里 `data` 卷名先按 compose 项目标签找，找不到才从 compose config 读。
+
+**已知限制（汇总）**：真实 Tavily 联网联调未做（没有凭证，且按 Issue #1 要先确认调用预算）；外部通知（飞书等）未接；材料版本事件到任务的匹配策略仍待定；人工锁定目前是整条锁定（没有字段级锁定）；站名与行业文案待用户确认；公开 API/MCP 仍只给登录后的本人，没有给外部 Agent 的独立令牌。
