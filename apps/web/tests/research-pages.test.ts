@@ -15,11 +15,11 @@ const ledgerEntry: LedgerListEntry = {
   readState,
 };
 const task = { id: "t1", title: "官方公告跟踪", goal: "盯住官方公告里与发布和定价有关的变化。", status: "active" as const, cadence: { kind: "daily" as const, at: "05:30" }, outputTemplate: "先给结论。", lastRunAt: NOW, createdAt: NOW, updatedAt: NOW, sources: [{ id: "s1", taskId: "t1", kind: "rss" as const, locator: "https://example.com/feed.xml", position: 0, enabled: true, createdAt: NOW }] };
-const run = { id: "r1", taskId: "t1", scheduledFor: NOW, startedAt: NOW, finishedAt: NOW, status: "no_change" as const, searchCalls: 4, modelCalls: 6, summary: "没有新变化。", error: null };
-const overview: TaskOverview = { task, latestRun: run, unreadCount: 1, reportCount: 1 };
+const run = { id: "r1", taskId: "t1", scheduledFor: NOW, startedAt: NOW, finishedAt: NOW, status: "no_change" as const, searchCalls: 4, modelCalls: 6, summary: "没有新变化。", error: null, coverage: { from: NOW, to: NOW, queries: 4, results: 8, fetched: 6, unreadable: 1, rejected: 0, fixture: false } };
+const overview: TaskOverview = { task, latestRun: run, unreadCount: 1, reportCount: 1, nextRunAt: NOW };
 const today: TodayOverview = { unread: [ledgerEntry], starred: [], needsCheck: [ledgerEntry], counts: { all: 1, unread: 1, starred: 0, needsCheck: 1 }, tasks: [overview], recentRuns: [{ ...run, taskTitle: task.title }], timezone: "Asia/Shanghai" };
 const ledger: LedgerView = { entries: [ledgerEntry], tasks: [{ id: "t1", title: task.title }], counts: { all: 1, unread: 1, starred: 0, needsCheck: 1 } };
-const detail: TaskDetail = { task, runs: [run], reports: [{ id: "rep1", taskId: "t1", runId: "r1", kind: "summary", body: "今天没有需要处理的变化。", createdAt: NOW }], ledger: [ledgerEntry] };
+const detail: TaskDetail = { task, runs: [run], nextRunAt: NOW, reports: [{ id: "rep1", taskId: "t1", runId: "r1", kind: "summary", body: "今天没有需要处理的变化。", createdAt: NOW }], ledger: [ledgerEntry] };
 const sources: SourcesView = { tasks: [{ id: "t1", title: task.title, status: "active", sources: task.sources }], kinds: ["rss", "web", "search"] };
 const settings: SettingsView = { timezone: "Asia/Shanghai", limits: { queriesPerRun: 6, pagesPerRun: 12, roundsPerRun: 2, modelCallsPerRun: 12, minutesPerRun: 15, timezone: "Asia/Shanghai" }, search: { provider: "tavily", configured: false }, counts: { tasks: 1, sources: 1, entries: 1, runs: 1 }, engine: { adminUrl: "/admin/settings" } };
 

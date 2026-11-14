@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { sql, type Db } from "@aihot/backend/db";
 import type { Evidence, LedgerEntry, LedgerKind, LedgerReadState, LedgerStatus } from "./contracts.ts";
+import { recordOutbox } from "./outbox.ts";
 
 interface LedgerRow {
   id: string;
@@ -156,6 +157,11 @@ export function appendLedgerEntry(entry: NewLedgerEntry, db: Db = sql): Promise<
         RETURNING ${EVIDENCE_COLUMNS}`;
       evidence.push(evidenceRow!);
     }
+    // 台账版本和待发事件在同一个事务里提交：worker 之后从这里派生通知/匹配，不靠轮询。
+    await recordOutbox(tx, "ledger.version", {
+      entryId: id, taskId: entry.taskId, entryKey: entry.entryKey, version, kind: entry.kind,
+      status: entry.status ?? "unverified", title: entry.title, runId: entry.runId ?? null,
+    });
     return toEntry(row!, evidence.map(toEvidence));
   });
 }

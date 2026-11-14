@@ -62,7 +62,7 @@ export default function Tasks() {
             比如“盯住几家公司的官方公告里与模型发布、定价和合规有关的变化”。研究任务会在设定的时间主动找新线索，并把变化写进台账。
           </Empty>
         )}
-        {tasks.map(({ task, latestRun, unreadCount, reportCount }) => (
+        {tasks.map(({ task, latestRun, unreadCount, reportCount, nextRunAt }) => (
           <Card key={task.id}>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
@@ -83,6 +83,7 @@ export default function Tasks() {
               ) : (
                 <><span>·</span><span>还没有运行</span></>
               )}
+              {nextRunAt && <><span>·</span><span>下次 {stamp(nextRunAt)}</span></>}
             </div>
           </Card>
         ))}

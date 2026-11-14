@@ -17,6 +17,10 @@ import {
 import { addTaskSource, createTask, getTask, listTasks, removeTaskSource, setTaskSourceEnabled, setTaskStatus } from "./tasks.ts";
 import { ledgerCounts, ledgerVersions, listLedgerView, markAllRead, setReadState } from "./ledger.ts";
 import { latestRun, listRuns, recentRuns } from "./runs.ts";
+import { enqueueOn } from "@aihot/backend/jobs/queue";
+import { RESEARCH_RUN_QUEUE, type ResearchRunJob } from "./jobs.ts";
+import { nextDue } from "./research/due.ts";
+import { searchConfigured } from "./providers/search.ts";
 import { listTaskReports } from "./reports.ts";
 
 type Handler = (req: FastifyRequest, reply: FastifyReply, admin: AdminPrincipal) => Promise<unknown>;
@@ -70,7 +74,7 @@ async function taskOverview(taskId?: string): Promise<TaskOverview[]> {
   const out: TaskOverview[] = [];
   for (const task of tasks) {
     const [run, counts, reports] = await Promise.all([latestRun(task.id), ledgerCounts(task.id), listTaskReports(task.id, sql, 500)]);
-    out.push({ task, latestRun: run, unreadCount: counts.unread, reportCount: reports.length });
+    out.push({ task, latestRun: run, unreadCount: counts.unread, reportCount: reports.length, nextRunAt: nextDue(task)?.toISOString() ?? null });
   }
   return out;
 }
@@ -134,8 +138,7 @@ async function settingsView(): Promise<SettingsView> {
   return {
     timezone: RESEARCH_LIMITS.timezone,
     limits: RESEARCH_LIMITS,
-    // T10 才接 SearchProvider；现在如实显示未配置，不用假结果填空。
-    search: { provider: "tavily", configured: Boolean(process.env.TAVILY_API_KEY) },
+    search: { provider: "tavily", configured: searchConfigured() },
     counts: counts!,
     engine: { adminUrl: "/admin/settings" },
   };
@@ -177,7 +180,7 @@ export function registerResearchApi(app: FastifyInstance): void {
     const task = await getTask(param(req, "id"));
     if (!task) return missing(reply, "task");
     const [runs, reports, ledger] = await Promise.all([listRuns(task.id, sql, 20), listTaskReports(task.id, sql, 20), listLedgerView({ taskId: task.id, limit: 10 })]);
-    const detail: TaskDetail = { task, runs, reports, ledger };
+    const detail: TaskDetail = { task, runs, reports, ledger, nextRunAt: nextDue(task)?.toISOString() ?? null };
     return detail;
   }));
 
@@ -186,6 +189,14 @@ export function registerResearchApi(app: FastifyInstance): void {
     if (status !== "active" && status !== "paused" && status !== "archived") return bad(reply, "状态只能是 active、paused 或 archived");
     const task = await setTaskStatus(param(req, "id"), status);
     return task ?? missing(reply, "task");
+  }));
+
+  app.post("/api/admin/research/tasks/:id/run", guarded(async (req, reply) => {
+    const task = await getTask(param(req, "id"));
+    if (!task) return missing(reply, "task");
+    const job: ResearchRunJob = { taskId: task.id, scheduledFor: null, trigger: "manual" };
+    await enqueueOn(RESEARCH_RUN_QUEUE, job);
+    return { queued: true };
   }));
 
   app.get("/api/admin/research/ledger", guarded(async (req) => ledgerView(req)));

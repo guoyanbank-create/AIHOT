@@ -12,6 +12,10 @@
     "./ledger": "./ledger.ts",
     "./runs": "./runs.ts",
     "./reports": "./reports.ts",
-    "./outbox": "./outbox.ts"
+    "./outbox": "./outbox.ts",
+    "./templates/*": "./templates/*"
+  },
+  "dependencies": {
+    "zod": "4.6.6"
   }
 }

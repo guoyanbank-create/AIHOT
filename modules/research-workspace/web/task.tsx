@@ -1,5 +1,5 @@
 // 任务详情：目标、节奏、信源、运行历史、报告和最近的台账。研究报告和待办都挂在任务上，不另做项目产品。
-import { Form, Link, useLoaderData } from "react-router";
+import { Form, Link, useFetcher, useLoaderData } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import type { Screen } from "@aihot/web/components/shell/screens";
 import { SITE } from "@aihot/site";
@@ -13,8 +13,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const form = await request.formData();
+  const id = encodeURIComponent(params.id ?? "");
+  if (String(form.get("intent") ?? "") === "run") {
+    const queued = await researchSend<{ queued: boolean }>(request, "POST", `/api/admin/research/tasks/${id}/run`, {});
+    return { ok: true, queued: queued.queued };
+  }
   const status = String(form.get("status") ?? "");
-  await researchSend(request, "PATCH", `/api/admin/research/tasks/${encodeURIComponent(params.id ?? "")}`, { status });
+  await researchSend(request, "PATCH", `/api/admin/research/tasks/${id}`, { status });
   return { ok: true };
 }
 
@@ -22,17 +27,22 @@ export const meta: MetaFunction = () => [{ title: `任务 · ${SITE.name}` }];
 export const handle: Screen = { tab: "tasks", name: "任务" };
 
 export default function Task() {
-  const { task, runs, reports, ledger } = useLoaderData<typeof loader>();
+  const { task, runs, reports, ledger, nextRunAt } = useLoaderData<typeof loader>();
+  const runFetcher = useFetcher<typeof action>();
   const [statusLabel, statusTone] = TASK_STATUS[task.status] ?? [task.status, "muted"];
   return (
     <>
       <div className="mb-2"><BackLink to="/tasks">任务</BackLink></div>
       <PageHead
         title={task.title}
-        lead={cadenceLabel(task.cadence)}
+        lead={`${cadenceLabel(task.cadence)}${nextRunAt ? ` · 下次 ${stamp(nextRunAt)}` : ""}`}
         actions={
           <>
             <Badge tone={statusTone}>{statusLabel}</Badge>
+            <runFetcher.Form method="post">
+              <input type="hidden" name="intent" value="run" />
+              <button type="submit" className={buttonClass("secondary")} disabled={runFetcher.state !== "idle"}>{runFetcher.state === "idle" ? "立即运行" : "已排队…"}</button>
+            </runFetcher.Form>
             {task.status === "active" ? (
               <Form method="post"><input type="hidden" name="status" value="paused" /><button type="submit" className={buttonClass("secondary")}>暂停</button></Form>
             ) : (
@@ -67,6 +77,14 @@ export default function Task() {
                       <span className="text-[12px] text-ink-4">{stamp(run.startedAt)}</span>
                       <span className="text-[12px] text-ink-4">搜索 {run.searchCalls} 次 · 模型 {run.modelCalls} 次</span>
                       {run.summary && <span className="w-full text-[12.5px] leading-relaxed text-ink-3">{run.summary}</span>}
+                      {run.coverage && (
+                        <span className="w-full text-[11.5px] text-ink-4">
+                          覆盖 {run.coverage.from ? stamp(run.coverage.from) : "首次"} → {stamp(run.coverage.to)}：查询 {run.coverage.queries} 条、读到 {run.coverage.fetched} 篇原文
+                          {run.coverage.unreadable ? `、读不到 ${run.coverage.unreadable} 条` : ""}
+                          {run.coverage.rejected ? `、拒绝 ${run.coverage.rejected} 条` : ""}
+                          {run.coverage.fixture ? "（本地 fixtures，未联网）" : ""}
+                        </span>
+                      )}
                       {run.error && <span className="w-full text-[12.5px] leading-relaxed text-hot">{run.error}</span>}
                     </div>
                   );

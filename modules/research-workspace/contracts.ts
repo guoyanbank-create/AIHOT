@@ -43,6 +43,21 @@ export interface ResearchTask {
 /** 一次研究运行的结果。failed/cancelled/budget_exceeded 都不伪装成 no_change。 */
 export type ResearchRunStatus = "running" | "succeeded" | "no_change" | "partial" | "failed" | "cancelled" | "budget_exceeded";
 
+/** 一次研究实际覆盖了什么：时间段和各项计数。读不到原文、被拒绝的抽取都记下，不伪装成没有变化。 */
+export interface RunCoverage {
+  /** 覆盖缺口的起点：上一次成功运行的结束时间；第一次运行是 null。 */
+  from: string | null;
+  /** 本次运行开始的时间。 */
+  to: string;
+  queries: number;
+  results: number;
+  fetched: number;
+  unreadable: number;
+  rejected: number;
+  /** 用了本地 fixtures（未联网）。 */
+  fixture: boolean;
+}
+
 export interface ResearchRun {
   id: string;
   taskId: string;
@@ -54,6 +69,7 @@ export interface ResearchRun {
   modelCalls: number;
   summary: string | null;
   error: string | null;
+  coverage: RunCoverage | null;
 }
 
 /** 台账条目的种类：源披露的事实、来源观点、AI 研判、人工结论。 */
@@ -156,6 +172,8 @@ export interface TaskOverview {
   latestRun: ResearchRun | null;
   unreadCount: number;
   reportCount: number;
+  /** 下一次计划运行（北京时间算好的 ISO 时刻）；手动任务或非 active 为 null。 */
+  nextRunAt: string | null;
 }
 
 /** 任务详情：任务、运行历史、报告和最近的台账。 */
@@ -164,6 +182,7 @@ export interface TaskDetail {
   runs: ResearchRun[];
   reports: TaskReport[];
   ledger: LedgerListEntry[];
+  nextRunAt: string | null;
 }
 
 /** 台账的一行（带阅读状态）。 */
