@@ -10,6 +10,8 @@ export interface FetchedPage {
   text: string;
   publishedAt: string | null;
   via: "readability" | "jina" | "text" | "fixture";
+  /** 这条原文来自哪个渠道：search:tavily、rss:<host>、web:<host>、fixture:search。 */
+  channel: string;
   /** 本地 fixtures（未联网）。 */
   fixture: boolean;
 }
@@ -17,11 +19,11 @@ export interface FetchedPage {
 const MAX_TEXT = 24_000;
 
 /** 一条线索的原文；unreadable 时返回 null。fixture 为 true 时只读本地 fixture。 */
-export async function fetchResearchPage(url: string, options: { subject: string; fixture: boolean }): Promise<FetchedPage | null> {
+export async function fetchResearchPage(url: string, options: { subject: string; fixture: boolean; channel?: string }): Promise<FetchedPage | null> {
   if (options.fixture) {
     const page = fixturePage(url);
     if (!page) return null;
-    return { url, title: page.title, text: page.text.slice(0, MAX_TEXT), publishedAt: page.publishedAt, via: "fixture", fixture: true };
+    return { url, title: page.title, text: page.text.slice(0, MAX_TEXT), publishedAt: page.publishedAt, via: "fixture", channel: options.channel ?? "fixture:search", fixture: true };
   }
   let parsed: URL;
   try {
@@ -41,6 +43,7 @@ export async function fetchResearchPage(url: string, options: { subject: string;
     text,
     publishedAt: body.publishedAt ? body.publishedAt.toISOString().slice(0, 10) : body.publicationTime ?? null,
     via: body.via,
+    channel: options.channel ?? `web:${parsed.hostname}`,
     fixture: false,
   };
 }

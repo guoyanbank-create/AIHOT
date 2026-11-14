@@ -181,3 +181,16 @@ node scripts/verify-private.ts --base http://127.0.0.1:3000 --password '<ADMIN_P
 - 登录落地页改成工作台的“今日”（`site/site.ts` 的 `SIGN_IN_HOME_PATH`）：之前登录默认落到引擎后台 `/admin/sources`，在工作台里没有回主界面的入口，体验不对。前后截图见 `evidence/deploy-before-login.png`、`evidence/deploy-after-login.png`。
 - 关闭状态的说明：模型调用关闭时，点“立即运行”会把运行如实记成 failed（模型未配置/关闭），不伪装成没有变化；配好 `LLM_*`（可选 `TAVILY_API_KEY`）后可真实跑。
 - 停止：`kill $(lsof -nP -iTCP:3000 -sTCP:LISTEN -t) $(lsof -nP -iTCP:3001 -sTCP:LISTEN -t) $(cat /tmp/aihot-deploy-worker.pid)`；数据在容器 `aihot-db` 和仓库 `.data/`。切回 Docker 部署后按 `deploy/mac/start-mac.sh`。
+
+## 9. 任务信源（RSS / 网页）接进研究流程（2026-11-15）
+
+在此之前任务信源只存着、不参与研究。现在研究运行会读它们：
+
+- `providers/feeds.ts`：解析 RSS 2.0 / RDF / Atom 的必要字段（标题、链接、发布时间），只接受 http(s)，去重；抓取走引擎 `guardedFetch`（SSRF、重定向检查，4MB 上限）。每个 RSS 信源最多取最近 3 条线索。
+- 任务里的 `web` 信源直接作为一条线索，按正文页上限（12 页）去读原文；读不到记 `unreadable`，不把标题当证据。
+- 证据带渠道：`rss:<host>`、`web:<host>`、`search:tavily`、`fixture:search`，台账里能看出每条事实来自哪个信源。
+- 没有 `TAVILY_API_KEY` 但任务配了真实 RSS/网页信源时：不执行搜索、不混入 fixtures，只读这些信源（省一次计划模型调用）；只有在任务没有任何真实信源时才用 fixtures 演示搜索。
+- 海外信源抓不到时在 `.env` 设 `EGRESS_PROXY_URL`（`.cn`、`.local`、私有地址仍直连）。
+- 运行覆盖新增 `feeds` / `web` 计数，任务详情里显示“RSS 信源 N 个、网页信源 N 个”，摘要里也会写。
+
+测试：模块测试 27 个（新增 RSS/Atom 解析 3 个、RSS+网页信源流程 1 个：搜索不被调用、渠道正确、不混 fixtures）。

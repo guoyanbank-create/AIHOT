@@ -54,6 +54,10 @@ export interface RunCoverage {
   fetched: number;
   unreadable: number;
   rejected: number;
+  /** 这次读过的任务 RSS 信源数（没有就不写）。 */
+  feeds?: number;
+  /** 这次读过的任务网页信源数（没有就不写）。 */
+  web?: number;
   /** 用了本地 fixtures（未联网）。 */
   fixture: boolean;
 }

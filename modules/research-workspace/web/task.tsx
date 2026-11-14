@@ -79,7 +79,11 @@ export default function Task() {
                       {run.summary && <span className="w-full text-[12.5px] leading-relaxed text-ink-3">{run.summary}</span>}
                       {run.coverage && (
                         <span className="w-full text-[11.5px] text-ink-4">
-                          覆盖 {run.coverage.from ? stamp(run.coverage.from) : "首次"} → {stamp(run.coverage.to)}：查询 {run.coverage.queries} 条、读到 {run.coverage.fetched} 篇原文
+                          覆盖 {run.coverage.from ? stamp(run.coverage.from) : "首次"} → {stamp(run.coverage.to)}：
+                          {run.coverage.queries ? `查询 ${run.coverage.queries} 条、` : ""}
+                          {run.coverage.feeds ? `RSS 信源 ${run.coverage.feeds} 个、` : ""}
+                          {run.coverage.web ? `网页信源 ${run.coverage.web} 个、` : ""}
+                          读到 {run.coverage.fetched} 篇原文
                           {run.coverage.unreadable ? `、读不到 ${run.coverage.unreadable} 条` : ""}
                           {run.coverage.rejected ? `、拒绝 ${run.coverage.rejected} 条` : ""}
                           {run.coverage.fixture ? "（本地 fixtures，未联网）" : ""}

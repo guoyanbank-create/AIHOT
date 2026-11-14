@@ -8,8 +8,9 @@ import { appendLedgerEntry, listLedgerView } from "../ledger.ts";
 import { listTaskReports } from "../reports.ts";
 import { ensureRun, finishRun, latestRun, startRun } from "../runs.ts";
 import { getTask } from "../tasks.ts";
+import { fetchFeed, type FeedItem } from "../providers/feeds.ts";
 import { fetchResearchPage, type FetchedPage } from "../providers/page.ts";
-import { searchWeb, type SearchOutcome } from "../providers/search.ts";
+import { searchConfigured, searchWeb, type SearchOutcome } from "../providers/search.ts";
 import { fallbackPlan, planWithModel, MAX_QUERIES } from "./plan.ts";
 import { extractWithModel, verifyCandidates } from "./extract.ts";
 
@@ -29,7 +30,8 @@ export interface ResearchJobInput {
 
 export interface ResearchDeps {
   search: (query: string, options: { maxResults: number; purpose: string; subject: string }) => Promise<SearchOutcome>;
-  fetchPage: (url: string, options: { subject: string; fixture: boolean }) => Promise<FetchedPage | null>;
+  fetchFeed: (feedUrl: string, options: { limit?: number }) => Promise<FeedItem[]>;
+  fetchPage: (url: string, options: { subject: string; fixture: boolean; channel?: string }) => Promise<FetchedPage | null>;
   plan: (input: { task: ResearchTask; history: string }) => Promise<{ queries: string[]; modelCalls: number }>;
   extract: (input: { task: ResearchTask; pages: readonly FetchedPage[]; history: string }) => Promise<{ candidates: Parameters<typeof verifyCandidates>[0]; modelCalls: number; model: string }>;
   now: () => Date;
@@ -37,6 +39,7 @@ export interface ResearchDeps {
 
 const defaults: ResearchDeps = {
   search: searchWeb,
+  fetchFeed,
   fetchPage: fetchResearchPage,
   plan: planWithModel,
   extract: extractWithModel,
@@ -77,12 +80,13 @@ export async function runTaskResearch(input: ResearchJobInput, overrides: Partia
   let modelCalls = 0;
   let fixtureRun = false;
   const problems: string[] = [];
+  const notes: string[] = [];
   const cancelled = () => shutdownSignal.signal.aborted;
   const overDeadline = () => deps.now().getTime() > deadline;
 
   const finish = async (status: Exclude<ResearchRunStatus, "running">, error: string | null): Promise<{ runId: string; status: Exclude<ResearchRunStatus, "running"> }> => {
     coverage.fixture = fixtureRun;
-    await finishRun(run.id, { status, searchCalls, modelCalls, summary: runSummary(status, coverage, problems), error, coverage });
+    await finishRun(run.id, { status, searchCalls, modelCalls, summary: runSummary(status, coverage, problems, notes), error, coverage });
     return { runId: run.id, status };
   };
 
@@ -90,24 +94,31 @@ export async function runTaskResearch(input: ResearchJobInput, overrides: Partia
     if (cancelled()) throw new Cancelled("worker 正在停止");
     const history = await historyOf(task.id);
 
-    // 1. 计划（有界）：模型不可用或预算用完时退回确定性查询。
-    let queries: string[];
-    try {
-      const planned = await deps.plan({ task, history });
-      modelCalls += planned.modelCalls;
-      queries = planned.queries.slice(0, LIMITS.queries);
-    } catch (error) {
-      if (cancelled()) throw new Cancelled("worker 正在停止");
-      if (error instanceof BudgetExceededError) throw error;
-      problems.push(`查询计划用了确定性回退（${error instanceof ModelUnavailableError ? "模型调用关闭或未配置" : error instanceof Error ? error.message : String(error)}）`);
-      queries = fallbackPlan(task).slice(0, LIMITS.queries);
+    // 任务自己的 RSS/网页信源优先；没有任何真实信源时才用 fixtures 演示搜索。
+    const hasRealSources = task.sources.some((source) => source.enabled && (source.kind === "rss" || source.kind === "web"));
+    const useSearch = searchConfigured() || !hasRealSources;
+    let queries: string[] = [];
+    if (useSearch) {
+      // 1. 计划（有界）：模型不可用或预算用完时退回确定性查询。
+      try {
+        const planned = await deps.plan({ task, history });
+        modelCalls += planned.modelCalls;
+        queries = planned.queries.slice(0, LIMITS.queries);
+      } catch (error) {
+        if (cancelled()) throw new Cancelled("worker 正在停止");
+        if (error instanceof BudgetExceededError) throw error;
+        problems.push(`查询计划用了确定性回退（${error instanceof ModelUnavailableError ? "模型调用关闭或未配置" : error instanceof Error ? error.message : String(error)}）`);
+        queries = fallbackPlan(task).slice(0, LIMITS.queries);
+      }
+    } else {
+      notes.push("未配置搜索提供商：本次只读任务信源（RSS/网页），搜索未执行");
     }
     coverage.queries = queries.length;
 
-    // 2. 搜索：线索而已；搜索失败不写成没有变化。
-    const leads = new Map<string, { title: string; url: string; snippet: string; publishedAt: string | null }>();
+    // 2. 线索：搜索（如有）加任务信源。
+    const leads = new Map<string, { title: string; url: string; snippet: string; publishedAt: string | null; channel: string }>();
     let searchFailures = 0;
-    for (const query of queries) {
+    for (const query of useSearch ? queries : []) {
       if (cancelled()) throw new Cancelled("worker 正在停止");
       if (overDeadline()) throw new Error(`单次研究超过 ${LIMITS.minutes} 分钟，停止在搜索阶段`);
       try {
@@ -117,13 +128,35 @@ export async function runTaskResearch(input: ResearchJobInput, overrides: Partia
         for (const result of outcome.results) {
           if (leads.size >= LIMITS.results) break;
           if (!/^https?:\/\//i.test(result.url)) continue;
-          if (!leads.has(result.url)) leads.set(result.url, { title: result.title, url: result.url, snippet: result.snippet, publishedAt: result.publishedAt });
+          if (!leads.has(result.url)) leads.set(result.url, { title: result.title, url: result.url, snippet: result.snippet, publishedAt: result.publishedAt, channel: outcome.fixture ? "fixture:search" : "search:tavily" });
         }
       } catch (error) {
         if (cancelled()) throw new Cancelled("worker 正在停止");
         if (error instanceof BudgetExceededError) throw error;
         searchFailures += 1;
         problems.push(`搜索失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    // 任务自己的信源：RSS 读最近几条，网页直接作为一条线索；失败记进运行问题。
+    for (const source of task.sources) {
+      if (!source.enabled || (source.kind !== "rss" && source.kind !== "web")) continue;
+      if (cancelled()) throw new Cancelled("worker 正在停止");
+      if (overDeadline()) throw new Error(`单次研究超过 ${LIMITS.minutes} 分钟，停止在信源阶段`);
+      if (leads.size >= LIMITS.results) break;
+      if (source.kind === "rss") {
+        try {
+          const items = await deps.fetchFeed(source.locator, { limit: 3 });
+          if (items.length) coverage.feeds = (coverage.feeds ?? 0) + 1;
+          for (const item of items) {
+            if (leads.size >= LIMITS.results) break;
+            if (!leads.has(item.url)) leads.set(item.url, { title: item.title, url: item.url, snippet: "", publishedAt: item.publishedAt, channel: `rss:${hostOf(source.locator)}` });
+          }
+        } catch (error) {
+          problems.push(`RSS 信源读取失败：${source.locator}（${error instanceof Error ? error.message : String(error)}）`);
+        }
+      } else if (/^https?:\/\//i.test(source.locator)) {
+        coverage.web = (coverage.web ?? 0) + 1;
+        if (!leads.has(source.locator)) leads.set(source.locator, { title: source.locator, url: source.locator, snippet: "", publishedAt: null, channel: `web:${hostOf(source.locator)}` });
       }
     }
     coverage.results = leads.size;
@@ -138,7 +171,7 @@ export async function runTaskResearch(input: ResearchJobInput, overrides: Partia
       if (cancelled()) throw new Cancelled("worker 正在停止");
       if (overDeadline()) throw new Error(`单次研究超过 ${LIMITS.minutes} 分钟，停止在读原文阶段`);
       if (pages.length >= LIMITS.pages) break;
-      const page = await deps.fetchPage(lead.url, { subject: task.id, fixture: fixtureRun });
+      const page = await deps.fetchPage(lead.url, { subject: task.id, fixture: fixtureRun, channel: lead.channel });
       if (page) {
         if (page.fixture) fixtureRun = true;
         pages.push(page);
@@ -211,14 +244,26 @@ export async function runTaskResearch(input: ResearchJobInput, overrides: Partia
   }
 }
 
-function runSummary(status: Exclude<ResearchRunStatus, "running">, coverage: RunCoverage, problems: readonly string[]): string {
+function runSummary(status: Exclude<ResearchRunStatus, "running">, coverage: RunCoverage, problems: readonly string[], notes: readonly string[] = []): string {
   const parts = [
-    `查询 ${coverage.queries} 条、拿到 ${coverage.results} 条线索、读到 ${coverage.fetched} 篇原文`,
+    coverage.queries ? `查询 ${coverage.queries} 条` : null,
+    coverage.feeds ? `RSS 信源 ${coverage.feeds} 个` : null,
+    coverage.web ? `网页信源 ${coverage.web} 个` : null,
+    `拿到 ${coverage.results} 条线索、读到 ${coverage.fetched} 篇原文`,
     coverage.unreadable ? `读不到原文 ${coverage.unreadable} 条` : null,
     coverage.rejected ? `拒绝 ${coverage.rejected} 条不合格条目` : null,
-    coverage.fixture ? "来源：本地 fixtures（未联网）" : "来源：搜索（Tavily）",
+    coverage.fixture ? "搜索：本地 fixtures（未联网）" : null,
   ].filter(Boolean);
+  for (const note of notes.slice(0, 2)) parts.push(note);
   if (problems.length) parts.push(`问题：${problems.slice(0, 2).join("；")}`);
   void status;
   return parts.join("；");
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "unknown";
+  }
 }

@@ -23,6 +23,7 @@ const PAGE: FetchedPage = {
   text: "[fixture] 这是本地演示数据。新一代模型每百万输入 token 1.5 美元，2026 年 11 月 20 日生效。",
   publishedAt: "2026-11-13",
   via: "fixture",
+  channel: "fixture:search",
   fixture: true,
 };
 
@@ -169,4 +170,44 @@ test("没有模型时的摘要退化成确定性列表，不编造", async () =>
   const text = fallbackSummary(taskDetail!, [{ ...entry, readState: null }]);
   assert.ok(text.includes("一条事实"));
   assert.ok(text.includes("引用 1 条"));
+});
+
+test("任务里的 RSS/网页信源会被读取；没有搜索提供商时不再混入 fixtures", async () => {
+  const created = await createTask({
+    title: "主流媒体监测（测试）",
+    goal: "盯住主流媒体最近报道里与科技、AI 有关的头条。",
+    cadence: { kind: "manual" },
+    outputTemplate: "先给结论。",
+    sources: [
+      { kind: "rss", locator: "https://feeds.bbci.co.uk/news/world/rss.xml" },
+      { kind: "web", locator: "https://www.theguardian.com/world" },
+    ],
+  });
+  let searchCalled = false;
+  let planned = false;
+  const makePage = (url: string, channel?: string): FetchedPage => ({ url, title: "主流媒体报道", text: "正文", publishedAt: "2026-11-14", via: "readability", channel: channel ?? "web:unknown", fixture: false });
+  const result = await runTaskResearch({ taskId: created.id, scheduledFor: null, trigger: "manual" }, {
+    plan: async () => { planned = true; throw new Error("没有搜索时不该计划查询"); },
+    search: async () => { searchCalled = true; throw new Error("不该调用搜索"); },
+    fetchFeed: async () => [
+      { title: "BBC：某国通过新的科技法案", url: "https://www.bbc.com/news/tech-test", publishedAt: "2026-11-14T00:00:00.000Z" },
+    ],
+    fetchPage: async (url, options) => makePage(url, options.channel),
+    extract: async ({ pages }) => ({
+      candidates: [{ entryKey: "world/tech-bill", kind: "fact", status: "disclosed", title: "BBC 报道：某国通过新的科技法案", body: "正文", author: null, quote: null, evidenceUrls: [pages[0]!.url] }],
+      modelCalls: 1,
+      model: "test-model",
+    }),
+  });
+  assert.equal(result.status, "succeeded");
+  assert.equal(searchCalled, false);
+  assert.equal(planned, false);
+  const run = await latestRun(created.id);
+  assert.equal(run?.coverage?.feeds, 1);
+  assert.equal(run?.coverage?.web, 1);
+  assert.equal(run?.coverage?.queries, 0);
+  const entries = await listLedgerView({ taskId: created.id });
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]!.evidence[0]!.channel, "rss:feeds.bbci.co.uk");
+  assert.equal(entries[0]!.evidence[0]!.url, "https://www.bbc.com/news/tech-test");
 });

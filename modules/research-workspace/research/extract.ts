@@ -101,7 +101,7 @@ export function verifyCandidates(candidates: readonly Candidate[], pages: readon
       return {
         url,
         publisher: safeHost(url),
-        channel: page.fixture ? "fixture:search" : "search:tavily",
+        channel: page.channel,
         publishedAt: page.publishedAt ? new Date(page.publishedAt) : null,
         fetchedAt: new Date(),
         analyzedAt: new Date(),
