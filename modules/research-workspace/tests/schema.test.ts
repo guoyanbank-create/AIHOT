@@ -3,8 +3,8 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { closeDb, sql } from "@aihot/backend/db";
-import { createTask, getTask, listTasks, setTaskStatus } from "../tasks.ts";
-import { appendLedgerEntry, getLedgerEntry, getReadState, listLedgerEntries, setLedgerLocked, setReadState } from "../ledger.ts";
+import { addTaskSource, createTask, getTask, listTasks, removeTaskSource, setTaskSourceEnabled, setTaskStatus } from "../tasks.ts";
+import { appendLedgerEntry, getLedgerEntry, getReadState, ledgerCounts, ledgerVersions, listLedgerEntries, listLedgerView, markAllRead, setLedgerLocked, setReadState } from "../ledger.ts";
 import { finishRun, latestRun, listRuns, startRun } from "../runs.ts";
 import { appendTaskReport, listTaskReports } from "../reports.ts";
 import { markOutboxDispatched, markOutboxFailed, pendingOutbox, recordOutbox } from "../outbox.ts";
@@ -151,4 +151,50 @@ test("事务 outbox：待发、失败重试和已派发", async () => {
   await markOutboxDispatched(sql, id);
   const [row] = await sql<{ dispatched_at: Date }[]>`SELECT dispatched_at FROM research_outbox WHERE id = ${id}`;
   assert.ok(row!.dispatched_at, "已派发的时间不会被重复派发改掉");
+});
+
+test("任务信源可以增删、启停；相同信源不重复", async () => {
+  const created = await task("信源管理");
+  const added = await addTaskSource(created.id, "search", "  新模型 定价  ");
+  assert.equal(added?.kind, "search");
+  assert.equal(added?.locator, "新模型 定价");
+  assert.equal((await addTaskSource(created.id, "search", "新模型 定价"))?.id, added!.id, "相同信源返回已有的那条");
+  const read = await getTask(created.id);
+  assert.equal(read?.sources.filter((source) => source.locator === "新模型 定价").length, 1);
+  assert.equal((await setTaskSourceEnabled(added!.id, false))?.enabled, false);
+  assert.equal((await setTaskSourceEnabled(added!.id, true))?.enabled, true);
+  assert.equal(await removeTaskSource(added!.id), true);
+  assert.equal(await removeTaskSource(added!.id), false);
+  assert.equal(await addTaskSource("no-such-task", "rss", "https://example.com/x"), null);
+});
+
+test("台账列表按未读/收藏/待核实筛，计数和版本历史可用，全部已读只改没读过的", async () => {
+  const created = await task("台账视图");
+  const evidence = [{ url: "https://example.com/evidence", channel: "rss:example" }];
+  const first = await appendLedgerEntry({ taskId: created.id, entryKey: "topic/a", kind: "fact", title: "第一版", body: "a", evidence });
+  const second = await appendLedgerEntry({ taskId: created.id, entryKey: "topic/a", kind: "fact", title: "第二版", body: "b", evidence });
+  const other = await appendLedgerEntry({ taskId: created.id, entryKey: "topic/b", kind: "human_conclusion", title: "人工结论", evidence });
+
+  assert.equal((await ledgerCounts(created.id)).all, 3);
+  assert.equal((await ledgerCounts(created.id)).unread, 3);
+  assert.deepEqual((await listLedgerView({ taskId: created.id, filter: "unread" })).map((row) => row.id).sort(), [first.id, other.id, second.id].sort());
+
+  await setReadState(second.id, { readAt: new Date(), starred: true, needsCheck: true });
+  const starred = await listLedgerView({ taskId: created.id, filter: "starred" });
+  assert.deepEqual(starred.map((row) => row.id), [second.id]);
+  assert.equal(starred[0]!.readState?.starred, true);
+  assert.deepEqual((await listLedgerView({ taskId: created.id, filter: "needsCheck" })).map((row) => row.id), [second.id]);
+  assert.equal((await ledgerCounts(created.id)).unread, 2);
+  assert.equal((await ledgerCounts(created.id)).starred, 1);
+
+  const versions = await ledgerVersions(created.id, "topic/a");
+  assert.deepEqual(versions.map((entry) => entry.version), [1, 2]);
+  assert.equal(versions[1]!.supersedesId, versions[0]!.id);
+
+  const marked = await markAllRead(created.id);
+  assert.equal(marked, 3);
+  assert.equal((await ledgerCounts(created.id)).unread, 0);
+  const [kept] = await sql`SELECT read_at, starred FROM research_read_state WHERE ledger_id = ${second.id}`;
+  assert.ok(kept!.read_at);
+  assert.equal(kept!.starred, true);
 });

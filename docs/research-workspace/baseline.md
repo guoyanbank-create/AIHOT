@@ -102,3 +102,24 @@ node scripts/verify-private.ts --base http://127.0.0.1:3000 --password '<ADMIN_P
 6. **公开 OpenAPI 里的 `links.aihot` 字段名**是引擎的公开契约，不随品牌改名；这些出口现在只给登录后的本人，后续若删除公开 API 再一起处理。
 7. **Mac 部署脚本**（`doctor-mac.sh`、`start-mac.sh`、`stop.sh`、`backup.sh`、`restore.sh`、`verify-private.sh`）属于部署阶段；本阶段先提供了 `scripts/verify-private.ts`（部署后就能跑），`.sh` 包装和体检、备份恢复在部署阶段补。
 8. **Mac 休眠/关机期间不运行**：定时研究依赖 worker 常驻；这一阶段没有做补偿调度。实际行为要在部署阶段用“合并补跑 + 显示覆盖缺口”的方式说明，不承诺绝不漏数。
+
+## 5. 第二阶段：T05～T08（五个主菜单与任务闭环）
+
+按用户的“继续（T05 起）”和 Issue #1 第三节的主界面要求，这一阶段做出来的是可以真正用的工作台界面：
+
+| 任务 | 内容 | 落在哪 |
+|---|---|---|
+| T05 | 五个主菜单取代引擎的公开导航；后台壳里进入工作台 | `site/site.ts` 的 `NAV.hidden`（引擎入口全部隐藏，支持任意引擎路径）、`apps/web/app/components/shell/nav.ts`（空分组不画、手机 tab 全部隐藏时的回落）、`apps/web/app/components/shell/TabBar.tsx`、`modules/research-workspace/web.tsx` |
+| T06 | 任务闭环：列表、四步创建（目标→信源→节奏→输出）、详情（目标/信源/运行历史/报告/最近台账）、暂停与恢复 | `modules/research-workspace/api.ts`、`web/tasks.tsx`、`web/task.tsx`、`tasks.ts` 的信源增删启停 |
+| T07 | 今日：自上次阅读以来的变化、待核实/收藏、任务运行、最近运行、全部标为已读 | `api.ts` 的 `/today`、`web/today.tsx`、`ledger.ts` 的列表/计数/全部已读 |
+| T08 | 台账：默认“自上次阅读以来的变化”，按任务与已读/收藏/待核实筛选，证据抽屉、版本差异、人工备注、CSV/Markdown 导出；信源页（按任务管理）；设置页（时区、硬上限、搜索提供商状态、原后台入口） | `web/ledger.tsx`、`web/export.ts`、`web/sources.tsx`、`web/settings.tsx`、`api.ts` 的台账/信源/设置接口、`ledger.ts` 的版本与计数 |
+
+接口和鉴权：模块自己的后台接口挂在 `/api/admin/research/*`（`api.ts`），和后台一样要求登录会话，写操作还要 CSRF；网页进程只通过 HTTP 读它（`web/api.server.ts`）。页面都是私有站点的页面，走 T02 的会话网关。
+
+测试与截图：
+
+- 模块测试 15 个（表与数据层、材料事件与回滚、outbox、任务信源增删启停、台账筛选/计数/版本/全部已读、接口鉴权与 CSRF、CSV 公式注入与 Markdown）。
+- 网页测试新增 `apps/web/tests/research-pages.test.ts`：五个主菜单取代引擎导航，今日/任务/任务详情/台账（含证据、版本、备注）/信源/设置都能打开并渲染真实形状的数据。
+- 截图在 `evidence/`：`after-today.png`、`after-tasks.png`、`after-task-detail.png`、`after-ledger.png`、`after-ledger-drawer.png`、`after-sources.png`、`after-settings.png`；和第一阶段的 `after-signed-in-home.png`（引擎公开导航）对照。
+
+这一阶段**没有做**：真正的主动研究（SearchProvider、搜索、抓原文、抽取、写台账）、定时排程与费用上限的可配置入口、任务报告之外的待办清单。设置页显示的固定上限就是 Issue #1 给的硬上限默认值，可配置在定时与费用阶段接上；搜索凭证未配置时如实在页面上显示“未配置”，不用假结果填空。

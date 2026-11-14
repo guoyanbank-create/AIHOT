@@ -131,3 +131,36 @@ export async function setTaskStatus(id: string, status: ResearchTaskStatus, db: 
     WHERE task_id = ${id} ORDER BY position, id`;
   return toTask(row, sources.map(toSource));
 }
+
+/** 给任务添加一条信源；已存在时返回已有的那条。 */
+export async function addTaskSource(taskId: string, kind: TaskSource["kind"], locator: string, db: Db = sql): Promise<TaskSource | null> {
+  const trimmed = locator.trim();
+  if (!trimmed) throw new Error("信源地址或查询不能为空");
+  if (!["rss", "web", "search"].includes(kind)) throw new Error("信源类型只能是 rss、web 或 search");
+  return inTransaction(db, async (tx) => {
+    const [task] = await tx<{ id: string }[]>`SELECT id FROM research_tasks WHERE id = ${taskId} FOR UPDATE`;
+    if (!task) return null;
+    const [next] = await tx<{ position: number }[]>`
+      SELECT coalesce(max(position) + 1, 0) AS position FROM research_task_sources WHERE task_id = ${taskId}`;
+    const [row] = await tx<SourceRow[]>`
+      INSERT INTO research_task_sources (id, task_id, kind, locator, position)
+      VALUES (${randomUUID()}, ${taskId}, ${kind}, ${trimmed}, ${next!.position})
+      ON CONFLICT (task_id, kind, locator) DO UPDATE SET enabled = true
+      RETURNING id, task_id, kind, locator, position, enabled, created_at`;
+    return toSource(row!);
+  });
+}
+
+/** 启用或停用一条任务信源，返回更新后的行；不存在时 null。 */
+export async function setTaskSourceEnabled(id: string, enabled: boolean, db: Db = sql): Promise<TaskSource | null> {
+  const [row] = await db<SourceRow[]>`
+    UPDATE research_task_sources SET enabled = ${enabled} WHERE id = ${id}
+    RETURNING id, task_id, kind, locator, position, enabled, created_at`;
+  return row ? toSource(row) : null;
+}
+
+/** 删掉一条任务信源。 */
+export async function removeTaskSource(id: string, db: Db = sql): Promise<boolean> {
+  const rows = await db`DELETE FROM research_task_sources WHERE id = ${id} RETURNING id`;
+  return rows.length > 0;
+}

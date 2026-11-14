@@ -67,3 +67,13 @@ export async function listRuns(taskId: string, db: Db = sql, limit = 20): Promis
     SELECT ${COLUMNS} FROM research_runs WHERE task_id = ${taskId} ORDER BY started_at DESC, id DESC LIMIT ${limit}`;
   return rows.map(toRun);
 }
+
+/** 最近的研究运行（跨任务），带任务标题；今日页用。 */
+export async function recentRuns(db: Db = sql, limit = 10): Promise<Array<ResearchRun & { taskTitle: string }>> {
+  const rows = await db<(RunRow & { task_title: string })[]>`
+    SELECT r.id, r.task_id, r.scheduled_for, r.started_at, r.finished_at, r.status, r.search_calls, r.model_calls,
+      r.summary, r.error, t.title AS task_title
+    FROM research_runs r JOIN research_tasks t ON t.id = r.task_id
+    ORDER BY r.started_at DESC, r.id DESC LIMIT ${limit}`;
+  return rows.map((row) => ({ ...toRun(row), taskTitle: row.task_title }));
+}

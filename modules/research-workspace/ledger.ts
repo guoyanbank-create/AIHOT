@@ -225,3 +225,98 @@ export async function getReadState(ledgerId: string, db: Db = sql): Promise<Ledg
   const [row] = await db<ReadRow[]>`SELECT ledger_id, read_at, starred, needs_check, note, updated_at FROM research_read_state WHERE ledger_id = ${ledgerId}`;
   return row ? toRead(row) : null;
 }
+
+/** 台账列表的一行：条目本身的字段加阅读状态。 */
+export type LedgerListRow = LedgerEntry & { readState: LedgerReadState | null };
+
+interface JoinedRow extends LedgerRow {
+  read_at: Date | null;
+  read_starred: boolean | null;
+  read_needs_check: boolean | null;
+  read_note: string | null;
+  read_updated_at: Date | null;
+}
+
+function toReadStateFromJoin(row: JoinedRow): LedgerReadState | null {
+  if (row.read_at === null && row.read_starred === null) return null;
+  return {
+    ledgerId: row.id,
+    readAt: iso(row.read_at),
+    starred: row.read_starred ?? false,
+    needsCheck: row.read_needs_check ?? false,
+    note: row.read_note,
+    updatedAt: (row.read_updated_at ?? row.created_at).toISOString(),
+  };
+}
+
+const LEDGER_FILTERS = {
+  unread: sql`r.read_at IS NULL`,
+  starred: sql`r.starred`,
+  needsCheck: sql`r.needs_check`,
+  all: sql`true`,
+} as const;
+
+export type LedgerFilter = keyof typeof LEDGER_FILTERS;
+
+/** 台账列表：可按任务和阅读状态筛，新的在前，带阅读状态和引用。 */
+export async function listLedgerView(options: { taskId?: string | null; filter?: LedgerFilter; limit?: number } = {}, db: Db = sql): Promise<LedgerListRow[]> {
+  const filter = LEDGER_FILTERS[options.filter ?? "all"] ?? LEDGER_FILTERS.all;
+  const task = options.taskId ? sql`AND e.task_id = ${options.taskId}` : sql``;
+  const rows = await db<JoinedRow[]>`
+    SELECT e.id, e.task_id, e.entry_key, e.version, e.kind, e.status, e.title, e.body, e.author, e.model,
+      e.model_version, e.run_id, e.supersedes_id, e.human_locked, e.created_at,
+      r.read_at, r.starred AS read_starred, r.needs_check AS read_needs_check, r.note AS read_note, r.updated_at AS read_updated_at
+    FROM research_ledger_entries e LEFT JOIN research_read_state r ON r.ledger_id = e.id
+    WHERE true ${task} AND ${filter}
+    ORDER BY e.created_at DESC, e.id DESC LIMIT ${Math.min(Math.max(options.limit ?? 100, 1), 500)}`;
+  if (!rows.length) return [];
+  const evidence = await db<EvidenceRow[]>`
+    SELECT ${EVIDENCE_COLUMNS} FROM research_evidence WHERE ledger_id IN ${sql(rows.map((row) => row.id))} ORDER BY created_at, id`;
+  const byLedger = new Map<string, Evidence[]>();
+  for (const item of evidence) {
+    const list = byLedger.get(item.ledger_id) ?? [];
+    list.push(toEvidence(item));
+    byLedger.set(item.ledger_id, list);
+  }
+  return rows.map((row) => ({ ...toEntry(row, byLedger.get(row.id) ?? []), readState: toReadStateFromJoin(row) }));
+}
+
+/** 台账的四个计数。 */
+export async function ledgerCounts(taskId: string | null, db: Db = sql): Promise<{ all: number; unread: number; starred: number; needsCheck: number }> {
+  const task = taskId ? sql`WHERE e.task_id = ${taskId}` : sql``;
+  const [row] = await db<{ all: number; unread: number; starred: number; needs_check: number }[]>`
+    SELECT count(*)::int AS all,
+      count(*) FILTER (WHERE r.read_at IS NULL)::int AS unread,
+      count(*) FILTER (WHERE r.starred)::int AS starred,
+      count(*) FILTER (WHERE r.needs_check)::int AS needs_check
+    FROM research_ledger_entries e LEFT JOIN research_read_state r ON r.ledger_id = e.id ${task}`;
+  return { all: row!.all, unread: row!.unread, starred: row!.starred, needsCheck: row!.needs_check };
+}
+
+/** 同一主题键的全部版本，旧的在前（给版本差异用）。 */
+export async function ledgerVersions(taskId: string, entryKey: string, db: Db = sql): Promise<LedgerEntry[]> {
+  const rows = await db<LedgerRow[]>`
+    SELECT ${ENTRY_COLUMNS} FROM research_ledger_entries
+    WHERE task_id = ${taskId} AND entry_key = ${entryKey} ORDER BY version`;
+  if (!rows.length) return [];
+  const evidence = await db<EvidenceRow[]>`
+    SELECT ${EVIDENCE_COLUMNS} FROM research_evidence WHERE ledger_id IN ${sql(rows.map((row) => row.id))} ORDER BY created_at, id`;
+  const byLedger = new Map<string, Evidence[]>();
+  for (const item of evidence) {
+    const list = byLedger.get(item.ledger_id) ?? [];
+    list.push(toEvidence(item));
+    byLedger.set(item.ledger_id, list);
+  }
+  return rows.map((row) => toEntry(row, byLedger.get(row.id) ?? []));
+}
+
+/** 把没读过（或指定任务里没读过）的台账标成已读；已经读过的保持原来的时间。 */
+export async function markAllRead(taskId: string | null, db: Db = sql): Promise<number> {
+  const task = taskId ? sql`AND task_id = ${taskId}` : sql``;
+  const rows = await db`
+    INSERT INTO research_read_state (ledger_id, read_at)
+    SELECT id, now() FROM research_ledger_entries WHERE true ${task}
+    ON CONFLICT (ledger_id) DO UPDATE SET read_at = coalesce(research_read_state.read_at, excluded.read_at), updated_at = now()
+    RETURNING ledger_id`;
+  return rows.length;
+}

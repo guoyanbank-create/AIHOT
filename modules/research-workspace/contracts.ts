@@ -149,3 +149,76 @@ export interface NewTaskInput {
   outputTemplate: string;
   sources: Array<{ kind: TaskSourceKind; locator: string }>;
 }
+
+/** 任务列表/今日里的一行：任务、最近一次运行和未读变化数。 */
+export interface TaskOverview {
+  task: ResearchTask;
+  latestRun: ResearchRun | null;
+  unreadCount: number;
+  reportCount: number;
+}
+
+/** 任务详情：任务、运行历史、报告和最近的台账。 */
+export interface TaskDetail {
+  task: ResearchTask;
+  runs: ResearchRun[];
+  reports: TaskReport[];
+  ledger: LedgerListEntry[];
+}
+
+/** 台账的一行（带阅读状态）。 */
+export interface LedgerListEntry extends LedgerEntry {
+  readState: LedgerReadState | null;
+}
+
+/** 今日：自上次阅读以来的变化、收藏、待核实、任务运行和最近运行。 */
+export interface TodayOverview {
+  unread: LedgerListEntry[];
+  starred: LedgerListEntry[];
+  needsCheck: LedgerListEntry[];
+  counts: { all: number; unread: number; starred: number; needsCheck: number };
+  tasks: TaskOverview[];
+  recentRuns: Array<ResearchRun & { taskTitle: string }>;
+  timezone: string;
+}
+
+/** 台账页：当前筛选的结果、任务下拉和四个计数。 */
+export interface LedgerView {
+  entries: LedgerListEntry[];
+  tasks: Array<{ id: string; title: string }>;
+  counts: { all: number; unread: number; starred: number; needsCheck: number };
+}
+
+/** 一条台账的详情：它自己、同一主题键的版本历史和阅读状态。 */
+export interface LedgerEntryDetail {
+  entry: LedgerEntry;
+  versions: LedgerEntry[];
+  readState: LedgerReadState | null;
+}
+
+/** 信源页：按任务分组的任务信源。 */
+export interface SourcesView {
+  tasks: Array<{ id: string; title: string; status: ResearchTaskStatus; sources: TaskSource[] }>;
+  kinds: TaskSourceKind[];
+}
+
+export type LedgerFilter = "all" | "unread" | "starred" | "needsCheck";
+
+/** 研究上限（可配置之前先按 Issue #1 的硬上限做默认值，见 docs/research-workspace/baseline.md）。 */
+export const RESEARCH_LIMITS = {
+  queriesPerRun: 6,
+  pagesPerRun: 12,
+  roundsPerRun: 2,
+  modelCallsPerRun: 12,
+  minutesPerRun: 15,
+  timezone: "Asia/Shanghai",
+} as const;
+
+/** 设置页：时区、固定上限，以及搜索提供商现在有没有配置。 */
+export interface SettingsView {
+  timezone: string;
+  limits: typeof RESEARCH_LIMITS;
+  search: { provider: string; configured: boolean };
+  counts: { tasks: number; sources: number; entries: number; runs: number };
+  engine: { adminUrl: string };
+}
